@@ -1,0 +1,10 @@
+# ninja log v7
+9	707	8008516998334619	src/InferenceVisualizer_autogen/timestamp	34ecb39a11aa3e5
+9	707	8008516998334619	src/InferenceVisualizer_autogen/mocs_compilation.cpp	34ecb39a11aa3e5
+9	707	8008516998334619	C:/Projects/InferenceVisualizer/build/src/InferenceVisualizer_autogen/timestamp	34ecb39a11aa3e5
+9	707	8008516998334619	C:/Projects/InferenceVisualizer/build/src/InferenceVisualizer_autogen/mocs_compilation.cpp	34ecb39a11aa3e5
+712	2978	8008516998879512	src/CMakeFiles/InferenceVisualizer.dir/InferenceVisualizer_autogen/mocs_compilation.cpp.obj	82765de166eea57f
+720	3060	8008516999040439	src/CMakeFiles/InferenceVisualizer.dir/main.cpp.obj	b8aa1b2eaeee9b93
+734	3193	8008516999167310	src/CMakeFiles/InferenceVisualizer.dir/ui/ImageView.cpp.obj	205f040c51873299
+727	3869	8008516999081873	src/CMakeFiles/InferenceVisualizer.dir/app/MainWindow.cpp.obj	6f9cfe8be43e5e16
+3869	4130	8008517030500619	bin/InferenceVisualizer.exe	a8f317b613ae2092

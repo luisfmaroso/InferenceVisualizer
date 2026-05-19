@@ -1,0 +1,94 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"childIndexes" : 
+					[
+						1
+					],
+					"jsonFile" : "directory-.-Debug-d0094a50bb2071803777.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.16"
+					},
+					"projectIndex" : 0,
+					"source" : "."
+				},
+				{
+					"build" : "src",
+					"jsonFile" : "directory-src-Debug-c94b7c2814d5a21df52c.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.16"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 0,
+					"source" : "src",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2
+					]
+				}
+			],
+			"name" : "Debug",
+			"projects" : 
+			[
+				{
+					"directoryIndexes" : 
+					[
+						0,
+						1
+					],
+					"name" : "InferenceVisualizer",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 1,
+					"id" : "InferenceVisualizer::@145eef247bfb46b6828c",
+					"jsonFile" : "target-InferenceVisualizer-Debug-f61d02e6a81895444b01.json",
+					"name" : "InferenceVisualizer",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "InferenceVisualizer_autogen::@145eef247bfb46b6828c",
+					"jsonFile" : "target-InferenceVisualizer_autogen-Debug-7a559eaee4f941cc92cc.json",
+					"name" : "InferenceVisualizer_autogen",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "InferenceVisualizer_autogen_timestamp_deps::@145eef247bfb46b6828c",
+					"jsonFile" : "target-InferenceVisualizer_autogen_timestamp_deps-Debug-90c1d905e45c4d51a71c.json",
+					"name" : "InferenceVisualizer_autogen_timestamp_deps",
+					"projectIndex" : 0
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "C:/Projects/InferenceVisualizer/build/Desktop_Qt_6_11_1_MinGW_64_bit-Debug",
+		"source" : "C:/Projects/InferenceVisualizer"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 7
+	}
+}

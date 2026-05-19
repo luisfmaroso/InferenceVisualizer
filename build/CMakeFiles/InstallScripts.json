@@ -1,0 +1,8 @@
+{
+	"InstallScripts" : 
+	[
+		"C:/Projects/InferenceVisualizer/build/cmake_install.cmake",
+		"C:/Projects/InferenceVisualizer/build/src/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

@@ -1,0 +1,19 @@
+# ninja log v7
+9	655	8008498650824227	InferenceVisualizer_autogen/timestamp	eb05b7b3d4085aa5
+9	655	8008498650824227	InferenceVisualizer_autogen/mocs_compilation.cpp	eb05b7b3d4085aa5
+9	655	8008498650824227	C:/Projects/InferenceVisualizer/build/Desktop_Qt_6_11_1_MinGW_64_bit-Debug/InferenceVisualizer_autogen/timestamp	eb05b7b3d4085aa5
+9	655	8008498650824227	C:/Projects/InferenceVisualizer/build/Desktop_Qt_6_11_1_MinGW_64_bit-Debug/InferenceVisualizer_autogen/mocs_compilation.cpp	eb05b7b3d4085aa5
+660	2629	8008498651701350	CMakeFiles/InferenceVisualizer.dir/InferenceVisualizer_autogen/mocs_compilation.cpp.obj	3f887b0ff74ca01b
+666	2688	8008498651736831	CMakeFiles/InferenceVisualizer.dir/main.cpp.obj	a00f618645895159
+672	2729	8008498651815662	CMakeFiles/InferenceVisualizer.dir/mainwindow.cpp.obj	5c976a5c9eb0bd4a
+2729	2914	8008498672394051	InferenceVisualizer.exe	8c92be4ebca1014b
+24	766	8008513110026214	build.ninja	b74eb15ac6ce9d7a
+26	691	8008513117354587	src/InferenceVisualizer_autogen/timestamp	3a33f280e4cf23e5
+26	691	8008513117354587	src/InferenceVisualizer_autogen/mocs_compilation.cpp	3a33f280e4cf23e5
+26	691	8008513117354587	C:/Projects/InferenceVisualizer/build/Desktop_Qt_6_11_1_MinGW_64_bit-Debug/src/InferenceVisualizer_autogen/timestamp	3a33f280e4cf23e5
+26	691	8008513117354587	C:/Projects/InferenceVisualizer/build/Desktop_Qt_6_11_1_MinGW_64_bit-Debug/src/InferenceVisualizer_autogen/mocs_compilation.cpp	3a33f280e4cf23e5
+692	3418	8008513118100890	src/CMakeFiles/InferenceVisualizer.dir/InferenceVisualizer_autogen/mocs_compilation.cpp.obj	f449047f129f814d
+698	3501	8008513118156084	src/CMakeFiles/InferenceVisualizer.dir/main.cpp.obj	337b767192a56cb4
+711	3749	8008513118282864	src/CMakeFiles/InferenceVisualizer.dir/ui/ImageView.cpp.obj	769500318bf219ec
+705	4584	8008513118194160	src/CMakeFiles/InferenceVisualizer.dir/app/MainWindow.cpp.obj	4c4d8bce2a747fd8
+4585	4903	8008513157025826	bin/InferenceVisualizer.exe	d4cab4a07ef4da1b
