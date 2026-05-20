@@ -4,8 +4,14 @@ InferenceVisualizer_autogen/timestamp: \
 	C:/Projects/InferenceVisualizer/src/app/MainWindow.cpp \
 	C:/Projects/InferenceVisualizer/src/app/MainWindow.h \
 	C:/Projects/InferenceVisualizer/src/main.cpp \
+	C:/Projects/InferenceVisualizer/src/media/VideoController.cpp \
+	C:/Projects/InferenceVisualizer/src/media/VideoController.h \
 	C:/Projects/InferenceVisualizer/src/ui/ImageView.cpp \
 	C:/Projects/InferenceVisualizer/src/ui/ImageView.h \
+	C:/Projects/InferenceVisualizer/src/ui/VideoControls.cpp \
+	C:/Projects/InferenceVisualizer/src/ui/VideoControls.h \
+	C:/Qt/6.11.1/mingw_64/include/QtCore/QObject \
+	C:/Qt/6.11.1/mingw_64/include/QtCore/QString \
 	C:/Qt/6.11.1/mingw_64/include/QtCore/q17memory.h \
 	C:/Qt/6.11.1/mingw_64/include/QtCore/q20bit.h \
 	C:/Qt/6.11.1/mingw_64/include/QtCore/q20functional.h \
@@ -128,6 +134,7 @@ InferenceVisualizer_autogen/timestamp: \
 	C:/Qt/6.11.1/mingw_64/include/QtCore/qtversionchecks.h \
 	C:/Qt/6.11.1/mingw_64/include/QtCore/qtypeinfo.h \
 	C:/Qt/6.11.1/mingw_64/include/QtCore/qtypes.h \
+	C:/Qt/6.11.1/mingw_64/include/QtCore/qurl.h \
 	C:/Qt/6.11.1/mingw_64/include/QtCore/qutf8stringview.h \
 	C:/Qt/6.11.1/mingw_64/include/QtCore/qvariant.h \
 	C:/Qt/6.11.1/mingw_64/include/QtCore/qvarlengtharray.h \
@@ -161,6 +168,13 @@ InferenceVisualizer_autogen/timestamp: \
 	C:/Qt/6.11.1/mingw_64/include/QtGui/qtransform.h \
 	C:/Qt/6.11.1/mingw_64/include/QtGui/qwindowdefs.h \
 	C:/Qt/6.11.1/mingw_64/include/QtGui/qwindowdefs_win.h \
+	C:/Qt/6.11.1/mingw_64/include/QtMultimedia/QMediaPlayer \
+	C:/Qt/6.11.1/mingw_64/include/QtMultimedia/qaudio.h \
+	C:/Qt/6.11.1/mingw_64/include/QtMultimedia/qmediaplayer.h \
+	C:/Qt/6.11.1/mingw_64/include/QtMultimedia/qtaudio.h \
+	C:/Qt/6.11.1/mingw_64/include/QtMultimedia/qtmultimedia-config.h \
+	C:/Qt/6.11.1/mingw_64/include/QtMultimedia/qtmultimediaexports.h \
+	C:/Qt/6.11.1/mingw_64/include/QtMultimedia/qtmultimediaglobal.h \
 	C:/Qt/6.11.1/mingw_64/include/QtWidgets/QMainWindow \
 	C:/Qt/6.11.1/mingw_64/include/QtWidgets/QWidget \
 	C:/Qt/6.11.1/mingw_64/include/QtWidgets/qmainwindow.h \

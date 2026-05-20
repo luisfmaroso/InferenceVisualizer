@@ -8,8 +8,26 @@
             "program": "${command:cmake.launchTargetPath}",
             "args": [],
             "stopAtEntry": false,
+            "preLaunchTask": "CMake: build",
             "cwd": "${workspaceFolder}",
-            "environment": [],
+            "environment": [
+                {
+                    "name": "PATH",
+                    "value": "C:\\Qt\\6.11.1\\mingw_64\\bin;C:\\Qt\\Tools\\mingw1310_64\\bin;${env:PATH}"
+                },
+                {
+                    "name": "QT_PLUGIN_PATH",
+                    "value": "C:\\Qt\\6.11.1\\mingw_64\\plugins"
+                },
+                {
+                    "name": "QT_MEDIA_BACKEND",
+                    "value": "ffmpeg"
+                },
+                {
+                    "name": "QT_LOGGING_RULES",
+                    "value": "qt.multimedia.*=true"
+                }
+            ],
             "MIMode": "gdb",
             "miDebuggerPath": "C:\\Qt\\Tools\\mingw1310_64\\bin\\gdb.exe",
             "setupCommands": [

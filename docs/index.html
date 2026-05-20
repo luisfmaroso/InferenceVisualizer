@@ -2,98 +2,20 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>InferenceVisualizer &mdash; Learning Log</title>
-<style>
-  :root {
-    --bg: #fafaf7;
-    --fg: #1f2328;
-    --muted: #5a6168;
-    --accent: #3b6ea8;
-    --border: #d9d9d2;
-    --code-bg: #1e2228;
-    --code-fg: #e6edf3;
-    --code-mute: #8b949e;
-    --inline-bg: #eceae3;
-    --warn: #b8741a;
-  }
-  html { box-sizing: border-box; }
-  *, *::before, *::after { box-sizing: inherit; }
-  body {
-    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    line-height: 1.6;
-    color: var(--fg);
-    background: var(--bg);
-    margin: 0;
-    padding: 2rem 1rem 4rem;
-  }
-  main { max-width: 880px; margin: 0 auto; }
-  h1 {
-    font-size: 2rem; margin: 0 0 .25rem;
-    border-bottom: 2px solid var(--border); padding-bottom: .5rem;
-  }
-  h2 {
-    margin-top: 2.5rem; padding-bottom: .25rem;
-    border-bottom: 1px solid var(--border);
-    font-size: 1.4rem;
-  }
-  h3 { margin-top: 1.75rem; font-size: 1.1rem; color: var(--accent); }
-  p, ul, ol { margin: .75rem 0; }
-  ul, ol { padding-left: 1.5rem; }
-  li { margin: .25rem 0; }
-  code, kbd, pre {
-    font-family: "JetBrains Mono", Consolas, "Courier New", monospace;
-    font-size: .9rem;
-  }
-  code {
-    background: var(--inline-bg);
-    padding: .1rem .35rem;
-    border-radius: 3px;
-  }
-  pre {
-    background: var(--code-bg);
-    color: var(--code-fg);
-    padding: 1rem 1.1rem;
-    border-radius: 6px;
-    overflow-x: auto;
-    line-height: 1.5;
-  }
-  pre code { background: transparent; padding: 0; color: inherit; }
-  pre .c { color: var(--code-mute); font-style: italic; }
-  .subtitle { color: var(--muted); margin-top: 0; font-size: .95rem; }
-  .ref {
-    color: var(--accent);
-    font-family: "JetBrains Mono", Consolas, monospace;
-    font-size: .85rem;
-    white-space: nowrap;
-  }
-  .tree {
-    background: var(--code-bg);
-    color: var(--code-fg);
-    padding: 1rem 1.1rem;
-    border-radius: 6px;
-    font-family: "JetBrains Mono", Consolas, monospace;
-    font-size: .88rem;
-    line-height: 1.55;
-    white-space: pre;
-    overflow-x: auto;
-  }
-  .tree .cm { color: var(--code-mute); }
-  table { border-collapse: collapse; width: 100%; margin: .75rem 0; }
-  th, td { border: 1px solid var(--border); padding: .5rem .75rem; text-align: left; vertical-align: top; }
-  th { background: var(--inline-bg); font-weight: 600; }
-  .pitfall { border-left: 4px solid var(--warn); padding: .5rem .9rem; background: #fff7e8; border-radius: 0 4px 4px 0; margin: .75rem 0; }
-  .pitfall strong { color: var(--warn); }
-  .toc { background: #fff; border: 1px solid var(--border); border-radius: 6px; padding: .5rem 1.25rem; margin: 1.5rem 0; }
-  .toc ol { margin: .25rem 0; padding-left: 1.25rem; }
-  .badge { display: inline-block; background: var(--accent); color: #fff; font-size: .75rem; padding: .15rem .55rem; border-radius: 10px; vertical-align: middle; margin-left: .35rem; }
-  hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
-</style>
+<title>InferenceVisualizer &mdash; Project Doc</title>
+<link rel="stylesheet" href="style.css" />
 </head>
 <body>
 <main>
 
-<h1>InferenceVisualizer &mdash; Learning Log</h1>
-<p class="subtitle">A Qt Widgets + modern C++ desktop application, built incrementally as a learning project. Current step: <strong>Step 1 &mdash; base application &amp; image viewer</strong>.</p>
+<h1>InferenceVisualizer</h1>
+<p class="subtitle">How the project is built. For the Qt and modern-C++ knowledge captured along the way, see <a href="concepts.html">Qt &amp; C++ concepts</a>. Current step: <strong>Step 2 &mdash; video playback &amp; dual-pane layout</strong>.</p>
+
+<nav class="docnav">
+  <span class="current">Project doc</span>
+  <span class="sep">&middot;</span>
+  <a href="concepts.html">Qt &amp; C++ concepts &rarr;</a>
+</nav>
 
 <nav class="toc">
   <strong>Contents</strong>
@@ -103,10 +25,7 @@
     <li><a href="#tree">Folder structure</a></li>
     <li><a href="#what">What was implemented</a></li>
     <li><a href="#why">Why it was implemented this way</a></li>
-    <li><a href="#qt">Qt concepts learned</a></li>
-    <li><a href="#cpp">C++ concepts learned</a></li>
     <li><a href="#build">Build &amp; run instructions</a></li>
-    <li><a href="#pitfalls">Common pitfalls</a></li>
     <li><a href="#future">Future improvements</a></li>
     <li><a href="#changelog">Changelog</a></li>
   </ol>
@@ -117,46 +36,71 @@
   <strong>InferenceVisualizer</strong> is a desktop application for inspecting computer-vision inference results.
   Once complete it will load images and videos, run inference using <strong>YOLO</strong>, <strong>UNet</strong>, and
   arbitrary <strong>ONNX</strong> models, and display the original side-by-side with the processed output.
-  The project doubles as a structured learning path through Qt Widgets, modern C++, and CMake on Windows.
+  The project doubles as a structured learning path through Qt Widgets, modern C++, and CMake on Windows &mdash;
+  with the technical knowledge captured separately in the <a href="concepts.html">Qt &amp; C++ concepts</a>
+  companion doc.
 </p>
 
-<h2 id="step">2. Current step <span class="badge">Step 1 / 6</span></h2>
-<p>Step 1 delivers the foundation: a main window with a menu bar, a working <em>Open Image</em> action,
-   and a reusable widget that displays images scaled to fit. No inference, no video &mdash; but the seams
-   that later steps will plug into are in place.</p>
+<h2 id="step">2. Current step <span class="badge">Step 2 / 6</span></h2>
+<p>Step 2 adds video. The central widget is now a dual-pane <code>QSplitter</code>; the right pane
+   mirrors the left until Step 3 routes it through inference. A <code>VideoController</code> hides
+   <code>QMediaPlayer</code> behind a small façade (see <a href="concepts.html#facade-pattern">controller as
+   façade</a>), a <code>VideoControls</code> widget gives play/pause + scrub, and the File menu gains
+   <em>Open Video&hellip;</em>. Frames flow as <code>QImage</code> so later steps can hand them to an inference
+   backend without changing the pipeline.</p>
 
 <h2 id="tree">3. Folder structure</h2>
 <div class="tree">InferenceVisualizer/
 &#9500;&#9472;&#9472; CMakeLists.txt              <span class="cm"># root: project metadata, finds Qt, adds src/</span>
 &#9500;&#9472;&#9472; src/
 &#9474;   &#9500;&#9472;&#9472; CMakeLists.txt          <span class="cm"># declares the executable target + its sources</span>
-&#9474;   &#9500;&#9472;&#9472; main.cpp                <span class="cm"># entry point &mdash; deliberately tiny</span>
+&#9474;   &#9500;&#9472;&#9472; main.cpp                <span class="cm"># entry point + qInstallMessageHandler</span>
 &#9474;   &#9500;&#9472;&#9472; app/                    <span class="cm"># application glue: windows, controllers (later)</span>
 &#9474;   &#9474;   &#9500;&#9472;&#9472; MainWindow.h
 &#9474;   &#9474;   &#9492;&#9472;&#9472; MainWindow.cpp
+&#9474;   &#9500;&#9472;&#9472; media/                  <span class="cm"># Step 2: video decode/playback engine</span>
+&#9474;   &#9474;   &#9500;&#9472;&#9472; VideoController.h
+&#9474;   &#9474;   &#9492;&#9472;&#9472; VideoController.cpp
 &#9474;   &#9492;&#9472;&#9472; ui/                     <span class="cm"># reusable widgets: image/video panes, controls</span>
 &#9474;       &#9500;&#9472;&#9472; ImageView.h
-&#9474;       &#9492;&#9472;&#9472; ImageView.cpp
+&#9474;       &#9500;&#9472;&#9472; ImageView.cpp
+&#9474;       &#9500;&#9472;&#9472; VideoControls.h     <span class="cm"># Step 2: play/pause + scrub bar</span>
+&#9474;       &#9492;&#9472;&#9472; VideoControls.cpp
 &#9500;&#9472;&#9472; docs/
-&#9474;   &#9492;&#9472;&#9472; index.html              <span class="cm"># this learning log</span>
+&#9474;   &#9500;&#9472;&#9472; index.html              <span class="cm"># this project doc</span>
+&#9474;   &#9500;&#9472;&#9472; concepts.html           <span class="cm"># Qt &amp; C++ tutorial drawn from the project</span>
+&#9474;   &#9492;&#9472;&#9472; style.css               <span class="cm"># shared stylesheet</span>
 &#9500;&#9472;&#9472; .vscode/
 &#9474;   &#9492;&#9472;&#9472; launch.json             <span class="cm"># VS Code debug profile (MinGW GDB)</span>
 &#9492;&#9472;&#9472; build/                      <span class="cm"># CMake build tree (regenerable, can be deleted)</span></div>
 
-<p>Two more folders are planned and will be introduced when they earn their keep:</p>
+<p>One more folder is planned:</p>
 <ul>
-  <li><code>src/media/</code> &mdash; the video pipeline, added in Step 2.</li>
   <li><code>src/inference/</code> &mdash; the inference backends (YOLO, UNet, ONNX), added in Step 3.</li>
 </ul>
 
 <h2 id="what">4. What was implemented</h2>
+
+<h3>Step 1</h3>
 <ul>
   <li>A top-level <code>QMainWindow</code> with title, status bar, and a <strong>File</strong> menu containing <em>Open Image&hellip;</em> (Ctrl+O) and <em>Exit</em> (Ctrl+Q).</li>
   <li>A reusable <code>ImageView</code> widget that displays a <code>QImage</code> scaled to fit while preserving aspect ratio.</li>
-  <li>Resize-safe rendering: the widget stores the <em>original</em> image and rescales from it on every resize, so quality never degrades from repeated scaling.</li>
-  <li>Robust file loading via <code>QImageReader</code>: respects EXIF orientation, automatically pulls in all formats Qt's image plugins support (PNG, JPEG, BMP, TIFF, WebP, &hellip;), and reports the actual failure reason via <code>QMessageBox</code> on bad input.</li>
+  <li>Resize-safe rendering: the widget stores the <em>original</em> image and rescales from it on every resize, so quality never degrades from repeated scaling. (See <a href="concepts.html#rescale-original">rescale from the original</a>.)</li>
+  <li>Robust file loading via <code>QImageReader</code> with EXIF orientation handling and per-file error reporting.</li>
   <li>Two-tier CMake setup (root + <code>src/</code>) that scales as the project grows.</li>
   <li>Warnings-as-feedback compile flags (<code>-Wall -Wextra -Wpedantic</code> on MinGW).</li>
+</ul>
+
+<h3>Step 2</h3>
+<ul>
+  <li>The central widget is now a dual-pane <code>QSplitter</code> with two <code>ImageView</code>s (<em>original</em> and <em>processed</em>). The divider is draggable; panes can't collapse to zero. (See <a href="concepts.html#qsplitter">QSplitter</a>.)</li>
+  <li>A <code>VideoController</code> wraps <code>QMediaPlayer</code> + <code>QVideoSink</code> behind a stable signal API. It emits <code>frameReady(QImage)</code> for every decoded frame, plus signals for state / position / duration / errors. (See <a href="concepts.html#qmediaplayer">QMediaPlayer</a>, <a href="concepts.html#qvideosink">QVideoSink &amp; QVideoFrame</a>, <a href="concepts.html#signal-forwarding">signal forwarding</a>.)</li>
+  <li>A <code>VideoControls</code> widget &mdash; play/pause button, position slider, time labels &mdash; that knows nothing about <code>QMediaPlayer</code>. It emits user-intent signals that <code>MainWindow</code> wires to the controller. (See <a href="concepts.html#emit-intent">widget emits intent</a>.)</li>
+  <li>New menu entry <em>Open Video&hellip;</em> (Ctrl+Shift+O). Opening an image stops video playback; opening a video clears any displayed image.</li>
+  <li>Space-bar shortcut on the play/pause button. Slider has a <a href="concepts.html#drag-interlock">drag/update interlock</a> that prevents controller position updates from fighting the user's finger.</li>
+  <li>A file-based <a href="concepts.html#message-handler">qInstallMessageHandler</a> in <code>main.cpp</code> that mirrors all <code>qDebug</code>/<code>qWarning</code>/<code>qCritical</code> output to <code>inference-visualizer.log</code> next to the .exe &mdash; essential because Qt GUI apps on Windows route output through <code>OutputDebugString</code>, which VS Code's debug console doesn't show.</li>
+  <li>CMake now finds and links <code>Qt6::Multimedia</code> in addition to <code>Qt6::Widgets</code>.</li>
+  <li>A proper <code>.gitignore</code> finally added to keep <code>build/</code> out of the repo.</li>
 </ul>
 
 <h2 id="why">5. Why it was implemented this way</h2>
@@ -176,166 +120,62 @@
 <h3>5.3 <code>ImageView</code> as its own widget, not a bare <code>QLabel</code> in <code>MainWindow</code></h3>
 <p>It would have been one line to put a <code>QLabel</code> directly inside <code>MainWindow</code>. Instead,
    <code>ImageView</code> wraps the <code>QLabel</code> and owns the scaling logic. Why bother now? Because
-   Step 2 will feed it video frames, Step 3 will feed it images with detection overlays, and Step 4 will feed it
+   Step 2 feeds it video frames, Step 3 will feed it images with detection overlays, and Step 4 will feed it
    blended segmentation masks. All four use cases funnel through the same
    <code>setImage(const QImage&amp;)</code> entry point. Centralizing the "how do I render a QImage in a Qt
    widget" question once, here, prevents the same scaling logic from being duplicated three times later.</p>
 
 <h3>5.4 Single pane in Step 1, splitter dual-pane in Step 2</h3>
-<p>The final UI is original-vs-processed side-by-side, but Step 1 has nothing to put in the right pane. Adding
-   a placeholder now would be misleading. In Step 2 the central widget becomes a <code>QSplitter</code> holding
-   two <code>ImageView</code>s &mdash; a five-line refactor, not a rewrite, precisely because
+<p>The final UI is original-vs-processed side-by-side, but Step 1 had nothing to put in the right pane. Adding
+   a placeholder then would have been misleading. In Step 2 the central widget becomes a <code>QSplitter</code>
+   holding two <code>ImageView</code>s &mdash; a five-line refactor, not a rewrite, precisely because
    <code>ImageView</code> is already self-contained.</p>
 
-<h2 id="qt">6. Qt concepts learned</h2>
+<h3>5.5 Why a <code>VideoController</code> object and not <code>QMediaPlayer</code> directly</h3>
+<p><code>MainWindow</code> never sees a <code>QMediaPlayer</code>. It talks to <code>VideoController</code>, which
+   exposes signals like <code>frameReady(QImage)</code>, <code>positionChanged(qint64)</code>, and slots like
+   <code>play()</code>, <code>pause()</code>, <code>seek(qint64)</code>. Two reasons:</p>
+<ul>
+  <li><strong>Encapsulation.</strong> If Step 5 or a future plugin replaces Qt Multimedia with OpenCV's
+      <code>cv::VideoCapture</code> or a streaming source, only <code>VideoController</code> changes &mdash;
+      <code>MainWindow</code> compiles unchanged.</li>
+  <li><strong>Pipeline fork point.</strong> In Step 3, <code>VideoController::frameReady</code> will fan out to
+      both the on-screen views <em>and</em> an inference backend. Putting that fork inside the controller (one
+      place) is cleaner than scattering it across <code>MainWindow</code>.</li>
+</ul>
+<p>This is the <a href="concepts.html#facade-pattern">controller as façade</a> pattern, introduced only now
+   that a real engine exists to coordinate &mdash; not as a premature framework choice.</p>
 
-<h3>6.1 <code>QApplication</code> and the event loop</h3>
-<p>Every Qt GUI begins with a <code>QApplication</code>. It initializes the GUI subsystem, parses Qt-specific
-   command-line flags (<code>-style</code>, <code>-platform</code>, &hellip;), and &mdash; crucially &mdash; runs
-   the <strong>event loop</strong> when you call <code>exec()</code>. The event loop is the heartbeat of any Qt
-   GUI: it pulls events (mouse, keyboard, paint, timer) from the OS and dispatches them to widgets. Without
-   it, your window appears and instantly closes.
-   <br /><span class="ref">src/main.cpp:7&ndash;13</span></p>
+<h3>5.6 Why <code>VideoControls</code> doesn't know about <code>VideoController</code></h3>
+<p>The slider/button widget emits <code>playPauseClicked</code>, <code>seekRequested(ms)</code> and consumes
+   <code>setPosition(ms)</code>, <code>setDuration(ms)</code>, <code>setPlaying(bool)</code>. That's it.
+   <code>MainWindow</code> connects the two halves. Why bother? Because this widget could be driven by a unit
+   test, an OpenCV-based controller, or a remote streaming pipeline without modification. See
+   <a href="concepts.html#emit-intent">widget emits intent, app dispatches</a> for the general pattern.</p>
 
-<h3>6.2 <code>QMainWindow</code> vs plain <code>QWidget</code></h3>
-<p><code>QMainWindow</code> is a specialized window that provides slots for a menu bar, status bar, toolbars,
-   dock widgets, and a single <em>central widget</em>. Use it for the top-level window. Use plain
-   <code>QWidget</code> (or a subclass) for custom widgets that live <em>inside</em> other widgets &mdash; like
-   our <code>ImageView</code>.
-   <br /><span class="ref">src/app/MainWindow.h:8</span> &middot; <span class="ref">src/ui/ImageView.h:8</span></p>
+<h3>5.7 Both panes show the same frame &mdash; for now</h3>
+<p>In Step 2 we connect <code>VideoController::frameReady</code> to <em>both</em> <code>ImageView</code>s.
+   That's visually honest ("the dual pane works") without lying about inference being done. In Step 3 we
+   replace one of those two <code>connect()</code> calls with a route through the inference backend &mdash; a
+   one-line change.</p>
 
-<h3>6.3 The <code>Q_OBJECT</code> macro and the MOC</h3>
-<p>Any class that uses signals, slots, properties, or runtime type info needs <code>Q_OBJECT</code> in its
-   declaration. The macro declares hidden meta-object members; the <strong>Meta-Object Compiler (MOC)</strong>
-   reads your header at build time and generates a <code>moc_*.cpp</code> file with their implementations.
-   Without <code>Q_OBJECT</code>, <code>connect()</code> calls compile but silently fail to fire &mdash; or you
-   get <em>"undefined reference to vtable"</em> link errors. CMake's <code>AUTOMOC</code> (enabled by
-   <code>qt_standard_project_setup()</code>) runs MOC for you on any header containing the macro.
-   <br /><span class="ref">src/app/MainWindow.h:10</span> &middot; <span class="ref">src/ui/ImageView.h:16</span></p>
+<h3>5.8 Split docs into project doc + concepts tutorial</h3>
+<p>This file used to do two jobs: describe the project and teach Qt. After two steps, the Qt-concept section
+   alone was 20+ entries, ordered by when each was first encountered rather than by topic. Splitting them
+   gives a project reader a much shorter doc, and a Qt learner a real topic-organized tutorial. The shared
+   <code>style.css</code> keeps the look uniform. Each future roadmap step now updates both files: project
+   facts here, new Qt/C++ entries in <a href="concepts.html">concepts.html</a> under the appropriate topic.</p>
 
-<h3>6.4 Parent&ndash;child ownership</h3>
-<p>When you pass a parent pointer to a <code>QObject</code> constructor &mdash; <code>new QLabel(this)</code>
-   &mdash; the child is added to the parent's child list. When the parent is destroyed, Qt walks that list and
-   deletes every child. This is why raw <code>new</code>/<code>delete</code> in Qt code isn't a leak: the lifetime
-   is encoded in the parent tree, not in <code>std::unique_ptr</code>. Don't mix the two for the same object.
-   <br /><span class="ref">src/ui/ImageView.cpp:12</span> &middot; <span class="ref">src/app/MainWindow.cpp:18</span></p>
+<h2 id="build">6. Build &amp; run instructions</h2>
 
-<h3>6.5 Signals &amp; slots (modern syntax)</h3>
-<p>A <em>signal</em> is emitted when something happens (<code>QAction::triggered</code> fires when the user
-   clicks the menu entry). A <em>slot</em> is a function that runs in response. <code>connect()</code> wires them
-   together. We use the <strong>function-pointer form</strong>:</p>
-<pre><code>connect(openAction, &amp;QAction::triggered, this, &amp;MainWindow::openImage);</code></pre>
-<p>This is checked at compile time &mdash; if the signal doesn't exist or the slot signature doesn't match,
-   you get an error. The old string-based form <code>SIGNAL(triggered())</code>/<code>SLOT(openImage())</code>
-   is checked at runtime and fails silently on typos. Always prefer the function-pointer form.
-   <br /><span class="ref">src/app/MainWindow.cpp:33,40</span></p>
-
-<h3>6.6 <code>QAction</code>, <code>QMenu</code>, <code>QMenuBar</code></h3>
-<p>An action represents <em>something the user can do</em>, decoupled from where it appears. The same
-   <code>QAction</code> can live in a menu, a toolbar, and a context menu simultaneously, with one shortcut
-   and one icon. We don't exploit this in Step 1, but it's the reason Qt models commands this way.
-   <br /><span class="ref">src/app/MainWindow.cpp:26&ndash;42</span></p>
-
-<h3>6.7 <code>QFileDialog::getOpenFileName</code></h3>
-<p>A static convenience function that pops up the OS file picker and blocks until the user chooses a file or
-   cancels. Returns an empty <code>QString</code> on cancel &mdash; not an error, just nothing to do.
-   <br /><span class="ref">src/app/MainWindow.cpp:54&ndash;58</span></p>
-
-<h3>6.8 <code>QImage</code> vs <code>QPixmap</code></h3>
-<p>Two pixel containers, used at different stages of the pipeline:</p>
-<table>
-  <tr><th></th><th><code>QImage</code></th><th><code>QPixmap</code></th></tr>
-  <tr><td>Lives on</td><td>CPU memory</td><td>Display server / GPU (platform-dependent)</td></tr>
-  <tr><td>Thread-safe?</td><td>Yes &mdash; safe to create/use on any thread</td><td>No &mdash; GUI thread only</td></tr>
-  <tr><td>Best for</td><td>Loading, processing, inference, storage</td><td>Drawing to a widget</td></tr>
-</table>
-<p>Rule of thumb: <strong>store <code>QImage</code>, convert to <code>QPixmap</code> at the last moment</strong>
-   when assigning to a <code>QLabel</code>. This rule will matter a great deal in Step 3, when inference runs on
-   a worker thread &mdash; the result must come back as a <code>QImage</code>.
-   <br /><span class="ref">src/ui/ImageView.cpp:55&ndash;65</span></p>
-
-<h3>6.9 <code>QImageReader</code> over <code>QImage(path)</code></h3>
-<p>Both can load images, but <code>QImageReader</code> exposes <code>errorString()</code>, lets you query the
-   file's format without loading it, and provides <code>setAutoTransform(true)</code> to honour EXIF
-   orientation (so phone photos don't appear sideways). The constructor form gives you a generic null image
-   on failure with no clue why.
-   <br /><span class="ref">src/app/MainWindow.cpp:60&ndash;72</span></p>
-
-<h3>6.10 <code>resizeEvent</code></h3>
-<p>Qt delivers events to widgets through virtual methods on <code>QWidget</code>: <code>paintEvent</code>,
-   <code>mousePressEvent</code>, <code>resizeEvent</code>, &hellip; Override the one you care about. Always call
-   the base-class implementation (<code>QWidget::resizeEvent(event)</code>) unless you specifically intend to
-   suppress the default behaviour.
-   <br /><span class="ref">src/ui/ImageView.cpp:39&ndash;45</span></p>
-
-<h3>6.11 Layouts</h3>
-<p><code>QVBoxLayout</code>, <code>QHBoxLayout</code>, and friends handle widget positioning and resize
-   propagation automatically. We use a zero-margin <code>QVBoxLayout</code> in <code>ImageView</code> to make
-   the internal <code>QLabel</code> fill the widget. Hand-rolling <code>setGeometry()</code> works but is
-   fragile &mdash; always reach for a layout first.
-   <br /><span class="ref">src/ui/ImageView.cpp:19&ndash;22</span></p>
-
-<h3>6.12 <code>tr()</code> for translatable strings</h3>
-<p>Every user-visible string is wrapped in <code>tr(&quot;&hellip;&quot;)</code>. Even with no translation files
-   today, the habit costs nothing and means localizing later is a tooling problem instead of a refactor.</p>
-
-<h2 id="cpp">7. C++ concepts learned</h2>
-
-<h3>7.1 <code>#pragma once</code></h3>
-<p>Replaces traditional <code>#ifndef</code>/<code>#define</code>/<code>#endif</code> header guards.
-   Supported by every modern compiler (GCC, Clang, MSVC), one line instead of three, no risk of macro-name
-   collisions across files.</p>
-
-<h3>7.2 <code>explicit</code> on single-argument constructors</h3>
-<p>Prevents the compiler from using a constructor for an unintended implicit conversion. Without it, a
-   function expecting <code>ImageView</code> would silently accept any <code>QWidget*</code> by wrapping it
-   in a new <code>ImageView</code>. Always mark single-argument constructors <code>explicit</code> unless you
-   want that conversion.
-   <br /><span class="ref">src/ui/ImageView.h:19</span> &middot; <span class="ref">src/app/MainWindow.h:13</span></p>
-
-<h3>7.3 <code>override</code></h3>
-<p>Marks a function as intentionally overriding a virtual from a base class. If the base signature changes
-   (e.g. Qt 7 renames or re-types <code>resizeEvent</code>), <code>override</code> turns a silent no-op into a
-   compile error. Cheap insurance.
-   <br /><span class="ref">src/ui/ImageView.h:25</span></p>
-
-<h3>7.4 Forward declarations in headers</h3>
-<p>Headers like <code>ImageView.h</code> only need to know <code>QLabel</code> exists (it's a pointer member),
-   not its full definition. A forward declaration <code>class QLabel;</code> avoids dragging the full
-   <code>&lt;QLabel&gt;</code> header into every translation unit that includes <code>ImageView.h</code>.
-   Faster builds and less coupling. Full includes go in the <code>.cpp</code>.
-   <br /><span class="ref">src/ui/ImageView.h:6&ndash;7</span> &middot; <span class="ref">src/app/MainWindow.h:5</span></p>
-
-<h3>7.5 Const-ref parameter passing for "big" types</h3>
-<p><code>setImage(const QImage&amp; image)</code> avoids copying the image into the function. In Qt's case
-   <code>QImage</code> uses <strong>implicit sharing</strong> (copy-on-write), so even a by-value copy would be
-   cheap until the image is modified &mdash; but const-ref expresses intent (we don't take ownership, we don't
-   modify) and is the modern-C++ default for non-trivial types.
-   <br /><span class="ref">src/ui/ImageView.h:21</span></p>
-
-<h3>7.6 Raw pointers in Qt code</h3>
-<p>You'll see <code>QLabel* m_label;</code> rather than <code>std::unique_ptr&lt;QLabel&gt;</code>. This is
-   <strong>correct in Qt</strong>: ownership is delegated to the parent &mdash; child tree (see &sect;6.4). For
-   non-<code>QObject</code> types (e.g. an <code>InferenceBackend</code> we'll add in Step 3), we'll absolutely
-   use <code>std::unique_ptr</code>. The two systems should not be mixed for the same object.</p>
-
-<h3>7.7 <code>auto</code> for local declarations</h3>
-<p><code>auto *fileMenu = menuBar()-&gt;addMenu(tr(&quot;&amp;File&quot;));</code> &mdash; the type
-   (<code>QMenu*</code>) is obvious from the right-hand side. <code>auto</code> shortens declarations and
-   prevents accidental implicit conversions. Use it freely for locals; spell out types in interfaces (function
-   parameters, return types).
-   <br /><span class="ref">src/app/MainWindow.cpp:28,32,39</span></p>
-
-<h2 id="build">8. Build &amp; run instructions</h2>
-
-<h3>8.1 Path A &mdash; Qt Creator</h3>
+<h3>6.1 Path A &mdash; Qt Creator</h3>
 <ol>
   <li>Open <code>File &rarr; Open File or Project&hellip;</code> and pick <code>C:\Projects\InferenceVisualizer\CMakeLists.txt</code>.</li>
   <li>Select the <strong>Desktop Qt 6.11.1 MinGW 64-bit</strong> kit, click <em>Configure Project</em>.</li>
   <li>Build with the hammer icon (or <kbd>Ctrl</kbd>+<kbd>B</kbd>), run with the green arrow (<kbd>Ctrl</kbd>+<kbd>R</kbd>).</li>
 </ol>
 
-<h3>8.2 Path B &mdash; VS Code (CMake Tools + C/C++ extensions)</h3>
+<h3>6.2 Path B &mdash; VS Code (CMake Tools + C/C++ extensions)</h3>
 <p>The repo ships a <code>.vscode/launch.json</code> wired to the MinGW GDB at
    <code>C:\Qt\Tools\mingw1310_64\bin\gdb.exe</code>. Required extensions:</p>
 <ul>
@@ -346,10 +186,14 @@
 <ol>
   <li>Open the project folder in VS Code.</li>
   <li>Pick the <em>Qt 6.11.1 MinGW</em> kit when CMake Tools prompts (or run <em>CMake: Select a Kit</em>).</li>
-  <li>Press <kbd>F7</kbd> to build, then <kbd>F5</kbd> to launch with the debugger.</li>
+  <li>Press <kbd>F5</kbd> &mdash; the <code>preLaunchTask</code> "CMake: build" runs first, then the debugger.</li>
 </ol>
+<p>The populated <code>environment</code> block in <code>launch.json</code> (<code>PATH</code>,
+   <code>QT_PLUGIN_PATH</code>, <code>QT_MEDIA_BACKEND</code>, <code>QT_LOGGING_RULES</code>) is essential when
+   launching outside Qt Creator. See <a href="concepts.html#env-block">the env block explained</a> for what
+   each variable does and why each one is required.</p>
 
-<h3>8.3 Path C &mdash; command line</h3>
+<h3>6.3 Path C &mdash; command line</h3>
 <pre><code>$env:PATH = "C:\Qt\Tools\mingw1310_64\bin;C:\Qt\Tools\Ninja;C:\Qt\Tools\CMake_64\bin;$env:PATH"
 
 cmake -S C:\Projects\InferenceVisualizer `
@@ -364,51 +208,25 @@ C:\Projects\InferenceVisualizer\build\cli\bin\InferenceVisualizer.exe</code></pr
 <p>The CLI build deliberately lives in <code>build\cli\</code> so it doesn't fight with Qt Creator's
    <code>build\Desktop_&hellip;_Debug\</code> directory.</p>
 
-<h2 id="pitfalls">9. Common pitfalls</h2>
-
-<div class="pitfall"><strong>Forgetting <code>Q_OBJECT</code>.</strong>
-  Without it, <code>connect()</code> compiles but does nothing &mdash; or you get
-  <em>undefined reference to vtable</em> at link time. Any class with signals, slots, or properties needs it.</div>
-
-<div class="pitfall"><strong>Using <code>QPixmap</code> off the GUI thread.</strong>
-  <code>QPixmap</code> is platform-tied to the display server. Loading or constructing one on a worker thread
-  is an instant crash on Windows and undefined behavior elsewhere. Always do the
-  <code>QImage &rarr; QPixmap</code> conversion on the GUI thread.</div>
-
-<div class="pitfall"><strong>Rescaling an already-scaled pixmap.</strong>
-  Each scale-down loses information. If you scale on every resize starting from the previously-scaled pixmap,
-  quality decays visibly. Always rescale from the original <code>QImage</code> (which is what
-  <code>ImageView::updateScaledPixmap()</code> does).</div>
-
-<div class="pitfall"><strong>Forgetting <code>Qt::KeepAspectRatio</code>.</strong>
-  The default is <code>Qt::IgnoreAspectRatio</code>, which stretches the image to fill the target. Easy mistake;
-  obvious bug.</div>
-
-<div class="pitfall"><strong>Double-parenting.</strong>
-  Passing a widget to a layout (<code>layout-&gt;addWidget(child)</code>) reparents it to the layout's owning
-  widget. If you also passed a parent to its constructor, the new parent overrides &mdash; usually harmless,
-  but worth knowing when debugging "why is this widget appearing nowhere?".</div>
-
-<div class="pitfall"><strong>Mixing <code>std::unique_ptr</code> with Qt parent ownership.</strong>
-  If a <code>QObject</code> has a parent <em>and</em> sits inside a <code>unique_ptr</code>, both will try to
-  delete it. Pick one ownership model per object.</div>
-
-<h2 id="future">10. Future improvements</h2>
+<h2 id="future">7. Future improvements</h2>
 <ul>
-  <li><strong>Step 2:</strong> dual-pane <code>QSplitter</code>, video pipeline (<code>QMediaPlayer</code> or a <code>cv::VideoCapture</code>-driven custom widget), play/pause controls.</li>
-  <li><strong>Step 3:</strong> YOLO inference backend behind an <code>IInferenceBackend</code> interface; controller class in <code>src/app/</code> that orchestrates frame-in / detections-out.</li>
+  <li><del><strong>Step 2:</strong> dual-pane <code>QSplitter</code>, video pipeline, play/pause controls.</del> &mdash; landed.</li>
+  <li><strong>Step 3:</strong> YOLO inference backend behind an <code>IInferenceBackend</code> interface; the existing <code>VideoController::frameReady</code> fork point is where inference will plug in.</li>
   <li><strong>Step 4:</strong> UNet segmentation backend; opacity slider for mask overlay.</li>
   <li><strong>Step 5:</strong> ONNX Runtime as a generic backend &mdash; model URL / file is enough to wire in a new model.</li>
-  <li><strong>Step 6 (future):</strong> worker-thread inference, GPU execution providers, drag-and-drop file open, recent-files menu, FPS counter overlay, output-video recording, settings dialog, plugin discovery.</li>
+  <li><strong>Step 6 (future):</strong> worker-thread inference (<code>QueuedConnection</code> across threads), GPU execution providers, drag-and-drop file open, recent-files menu, FPS counter overlay, output-video recording, settings dialog, plugin discovery for models.</li>
+  <li><strong>Polish backlog</strong> (not blocking any step): audio output (<code>QAudioOutput</code>) for video, volume slider, frame-step buttons, fullscreen toggle, restore last-used directory in file dialogs.</li>
 </ul>
 
-<h2 id="changelog">11. Changelog</h2>
+<h2 id="changelog">8. Changelog</h2>
 <ul>
   <li><strong>2026-05-18 &mdash; Step 1.</strong> Initial project skeleton, two-tier CMake, <code>MainWindow</code>, <code>ImageView</code>, File menu, image loading via <code>QImageReader</code>, aspect-ratio-preserving rescale on window resize, error reporting via <code>QMessageBox</code>. Added VS Code debug profile (<code>.vscode/launch.json</code>) targeting MinGW GDB.</li>
+  <li><strong>2026-05-19 &mdash; Step 2.</strong> Video playback. New <code>src/media/VideoController</code> (<code>QMediaPlayer</code> + <code>QVideoSink</code> behind a stable signal API). New <code>src/ui/VideoControls</code> widget (play/pause + draggable slider). <code>MainWindow</code> central widget became a <code>QSplitter</code> with two <code>ImageView</code>s; new <em>Open Video&hellip;</em> menu action. CMake learned about <code>Qt6::Multimedia</code>. Added <code>.gitignore</code> to keep <code>build/</code> out of the repo. Added a file-based <code>qInstallMessageHandler</code> in <code>main.cpp</code> &mdash; on Windows Qt GUI apps, default <code>qDebug()</code> output goes to <code>OutputDebugString</code> which VS Code's debug console cannot see. <code>.vscode/launch.json</code> gained a populated <code>environment</code> block (<code>PATH</code>, <code>QT_PLUGIN_PATH</code>, <code>QT_MEDIA_BACKEND</code>, <code>QT_LOGGING_RULES</code>) and a <code>preLaunchTask</code> so <kbd>F5</kbd> always builds first. Hit and documented a memorable Qt-on-Windows landmine: an incomplete <code>windeployqt</code> deployment in <code>build/bin/</code> caused <code>QMediaPlayer</code> to silently no-op because Qt's plugin search path was empty &mdash; fixed by setting <code>QT_PLUGIN_PATH</code>.</li>
+  <li><strong>2026-05-19 &mdash; Docs split.</strong> Separated the single learning log into a project doc (this file) and a topic-organized Qt &amp; C++ concepts tutorial (<a href="concepts.html">concepts.html</a>). Extracted shared CSS into <code>docs/style.css</code>. Going forward, each step updates both files: project facts here, new concept entries (with <code>Step N</code> badges and <code>src/file:line</code> refs) under the appropriate topic in <code>concepts.html</code>.</li>
 </ul>
 
 <hr />
-<p class="subtitle">Document updated as the project evolves. Each roadmap step appends a changelog entry and updates the relevant sections above.</p>
+<p class="subtitle">Document updated as the project evolves. Each roadmap step appends a changelog entry and updates the relevant sections above; new Qt/C++ knowledge lands in <a href="concepts.html">concepts.html</a>.</p>
 
 </main>
 </body>

@@ -14,7 +14,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # subdirectories to find the .exe.
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Widgets)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Widgets Multimedia)
 qt_standard_project_setup()
 
 add_subdirectory(src)

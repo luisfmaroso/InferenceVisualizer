@@ -6,8 +6,12 @@ qt_add_executable(InferenceVisualizer
 target_sources(InferenceVisualizer PRIVATE
     app/MainWindow.h
     app/MainWindow.cpp
+    media/VideoController.h
+    media/VideoController.cpp
     ui/ImageView.h
     ui/ImageView.cpp
+    ui/VideoControls.h
+    ui/VideoControls.cpp
 )
 
 target_include_directories(InferenceVisualizer PRIVATE
@@ -16,6 +20,7 @@ target_include_directories(InferenceVisualizer PRIVATE
 
 target_link_libraries(InferenceVisualizer PRIVATE
     Qt6::Widgets
+    Qt6::Multimedia
 )
 
 if(MSVC)

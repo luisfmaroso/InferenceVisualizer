@@ -23,9 +23,21 @@
 			null
 		],
 		[
+			"C:/Projects/InferenceVisualizer/src/media/VideoController.h",
+			"MU",
+			"HTGEZKIBRU/moc_VideoController.cpp",
+			null
+		],
+		[
 			"C:/Projects/InferenceVisualizer/src/ui/ImageView.h",
 			"MU",
 			"UYX5XTB5RZ/moc_ImageView.cpp",
+			null
+		],
+		[
+			"C:/Projects/InferenceVisualizer/src/ui/VideoControls.h",
+			"MU",
+			"UYX5XTB5RZ/moc_VideoControls.cpp",
 			null
 		]
 	],
@@ -37,7 +49,10 @@
 		"MINGW_HAS_SECURE_API=1",
 		"QT_CORE_LIB",
 		"QT_GUI_LIB",
+		"QT_MULTIMEDIA_LIB",
 		"QT_NEEDS_QMAIN",
+		"QT_NETWORK_LIB",
+		"QT_NO_DEBUG",
 		"QT_WIDGETS_LIB",
 		"UNICODE",
 		"WIN32",
@@ -61,6 +76,8 @@
 		"C:/Qt/6.11.1/mingw_64/mkspecs/win32-g++",
 		"C:/Qt/6.11.1/mingw_64/include/QtWidgets",
 		"C:/Qt/6.11.1/mingw_64/include/QtGui",
+		"C:/Qt/6.11.1/mingw_64/include/QtMultimedia",
+		"C:/Qt/6.11.1/mingw_64/include/QtNetwork",
 		"C:/Qt/Tools/mingw1310_64/lib/gcc/x86_64-w64-mingw32/13.1.0/include/c++",
 		"C:/Qt/Tools/mingw1310_64/lib/gcc/x86_64-w64-mingw32/13.1.0/include/c++/x86_64-w64-mingw32",
 		"C:/Qt/Tools/mingw1310_64/lib/gcc/x86_64-w64-mingw32/13.1.0/include/c++/backward",
@@ -81,7 +98,7 @@
 	"MOC_PATH_PREFIX" : false,
 	"MOC_PREDEFS_CMD" : 
 	[
-		"c:/Qt/Tools/mingw1310_64/bin/g++.exe",
+		"C:/Qt/Tools/mingw1310_64/bin/g++.exe",
 		"-std=c++17",
 		"-w",
 		"-dM",
@@ -103,7 +120,17 @@
 	[
 		[ "C:/Projects/InferenceVisualizer/src/app/MainWindow.cpp", "MU", null ],
 		[ "C:/Projects/InferenceVisualizer/src/main.cpp", "MU", null ],
-		[ "C:/Projects/InferenceVisualizer/src/ui/ImageView.cpp", "MU", null ]
+		[
+			"C:/Projects/InferenceVisualizer/src/media/VideoController.cpp",
+			"MU",
+			null
+		],
+		[ "C:/Projects/InferenceVisualizer/src/ui/ImageView.cpp", "MU", null ],
+		[
+			"C:/Projects/InferenceVisualizer/src/ui/VideoControls.cpp",
+			"MU",
+			null
+		]
 	],
 	"UIC_OPTIONS" : [],
 	"UIC_SEARCH_PATHS" : [],

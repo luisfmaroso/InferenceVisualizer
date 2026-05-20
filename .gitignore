@@ -47,3 +47,44 @@ compile_commands.json
 
 # QtCreator local machine specific files for imported projects
 *creator.user*
+
+# --- Added in step 2 -----------------------------------------------------
+
+# CMake build outputs (top-level and per-config). The default Qt .gitignore
+# above misses these, which is how a couple hundred build artifacts got
+# committed in step 1. To stop tracking the ones already in the index, run:
+#   git rm --cached -r build
+# (your working files stay; git just stops watching them).
+build/
+build-*/
+out/
+cmake-build-*/
+
+# CMake leftovers if they ever leak to the source tree
+CMakeCache.txt
+CMakeFiles/
+CMakeUserPresets.json
+.cmake/
+
+# Qt Creator scratch dir created next to CMakeLists.txt
+.qtcreator/
+
+# VS Code: keep shared configs, ignore per-user state
+.vscode/*
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# OS clutter
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+# Editor swap / backup
+*.swp
+*.swo
+*~
+*.bak
+*.orig
