@@ -9,13 +9,15 @@
 <main>
 
 <h1>Qt &amp; C++ Concepts</h1>
-<p class="subtitle">Notes on Qt Widgets and modern C++, grouped by topic, with snippets and references drawn from the <strong>InferenceVisualizer</strong> codebase. Each entry's <span class="badge">Step N</span> badge marks the roadmap step that first surfaced it.</p>
+<p class="subtitle">Notes on Qt Widgets and modern C++, grouped by topic, with snippets drawn directly from the <strong>InferenceVisualizer</strong> codebase. Each entry's <span class="badge">Step N</span> badge marks the roadmap step that first surfaced it.</p>
 
 <nav class="docnav">
   <a href="index.html">&larr; Project doc</a>
   <span class="sep">&middot;</span>
   <span class="current">Qt &amp; C++ concepts</span>
 </nav>
+
+<p class="subtitle"><strong>Snippets last verified against:</strong> Step 2. When code changes in a future step, refresh the snippets that touch the modified files &mdash; each snippet has its source path as a comment on the first line, so a quick search for the file path finds every place to update.</p>
 
 <nav class="toc">
   <strong>Contents</strong>
@@ -43,18 +45,37 @@
    command-line flags (<code>-style</code>, <code>-platform</code>, &hellip;), and &mdash; crucially &mdash; runs
    the <strong>event loop</strong> when you call <code>exec()</code>. The event loop is the heartbeat of any Qt
    GUI: it pulls events (mouse, keyboard, paint, timer) from the OS and dispatches them to widgets. Without
-   it, your window appears and instantly closes.
-   <br /><span class="ref">src/main.cpp:67&ndash;77</span></p>
+   it, your window appears and instantly closes.</p>
+<pre><code><span class="c">// src/main.cpp &mdash; entry point</span>
+int main(int argc, char *argv[])
+{
+    QApplication app(argc, argv);
+    QApplication::setApplicationName("InferenceVisualizer");
+    QApplication::setApplicationVersion("0.1.0");
+
+    installFileLogger();
+
+    MainWindow window;
+    window.show();
+
+    return QApplication::exec();   <span class="c">// runs the event loop until quit</span>
+}</code></pre>
+<p><span class="ref">src/main.cpp:67&ndash;79</span></p>
 
 <h3 id="tiny-main">Keep <code>main()</code> tiny <span class="badge">Step 1</span></h3>
 <p>Anything inside <code>main</code> is hard to test, hard to depend on, and hard to refactor. Our
    <code>main.cpp</code> only constructs <code>QApplication</code>, installs the log handler, shows the
    <code>MainWindow</code>, and enters the event loop. All real logic lives in classes that can be exercised
-   independently.</p>
+   independently &mdash; see the snippet for <a href="#qapplication">QApplication</a> above; that
+   <em>is</em> the entire body of <code>main</code>.</p>
 
 <h3 id="tr"><code>tr()</code> for translatable strings <span class="badge">Step 1</span></h3>
-<p>Every user-visible string is wrapped in <code>tr(&quot;&hellip;&quot;)</code>. Even with no translation files
-   today, the habit costs nothing and means localizing later is a tooling problem instead of a refactor.</p>
+<p>Every user-visible string is wrapped in <code>tr(&quot;&hellip;&quot;)</code>. Even with no translation
+   files today, the habit costs nothing and means localizing later is a tooling problem instead of a refactor.</p>
+<pre><code><span class="c">// src/app/MainWindow.cpp &mdash; every user-facing string uses tr()</span>
+setWindowTitle(tr("InferenceVisualizer"));
+statusBar()->showMessage(tr("Ready."));
+auto *fileMenu = menuBar()->addMenu(tr("&amp;File"));</code></pre>
 
 <!-- =========================================================== -->
 <h2 id="object-system">2. The Qt object system</h2>
@@ -65,52 +86,93 @@
    reads your header at build time and generates a <code>moc_*.cpp</code> file with their implementations.
    Without <code>Q_OBJECT</code>, <code>connect()</code> calls compile but silently fail to fire &mdash; or you
    get <em>"undefined reference to vtable"</em> link errors. CMake's <code>AUTOMOC</code> (enabled by
-   <code>qt_standard_project_setup()</code>) runs MOC for you on any header containing the macro.
-   <br /><span class="ref">src/app/MainWindow.h:10</span> &middot; <span class="ref">src/ui/ImageView.h:16</span></p>
+   <code>qt_standard_project_setup()</code>) runs MOC for you on any header containing the macro.</p>
+<pre><code><span class="c">// src/app/MainWindow.h &mdash; any class with signals/slots needs Q_OBJECT</span>
+class MainWindow : public QMainWindow
+{
+    Q_OBJECT                       <span class="c">// MOC processes this header because of this line</span>
+
+public:
+    explicit MainWindow(QWidget *parent = nullptr);
+
+private slots:
+    void openImage();
+    void openVideo();
+    <span class="c">// ...</span>
+};</code></pre>
+<p><span class="ref">src/app/MainWindow.h:14&ndash;25</span> &middot; <span class="ref">src/ui/ImageView.h:16</span></p>
 
 <h3 id="parent-child">Parent&ndash;child ownership <span class="badge">Step 1</span></h3>
 <p>When you pass a parent pointer to a <code>QObject</code> constructor &mdash; <code>new QLabel(this)</code>
-   &mdash; the child is added to the parent's child list. When the parent is destroyed, Qt walks that list and
-   deletes every child. This is why raw <code>new</code>/<code>delete</code> in Qt code isn't a leak: the lifetime
-   is encoded in the parent tree, not in <code>std::unique_ptr</code>. Don't mix the two for the same object.
-   <br /><span class="ref">src/ui/ImageView.cpp:12</span> &middot; <span class="ref">src/app/MainWindow.cpp:24</span></p>
+   &mdash; the child is added to the parent's child list. When the parent is destroyed, Qt walks that list
+   and deletes every child. This is why raw <code>new</code>/<code>delete</code> in Qt code isn't a leak: the
+   lifetime is encoded in the parent tree, not in <code>std::unique_ptr</code>. Don't mix the two for the
+   same object.</p>
+<pre><code><span class="c">// src/ui/ImageView.cpp &mdash; m_label is auto-deleted when ImageView is destroyed</span>
+ImageView::ImageView(QWidget *parent)
+    : QWidget(parent)
+    , m_label(new QLabel(this))    <span class="c">// "this" is the parent</span>
+{
+    <span class="c">// ... no delete needed anywhere ...</span>
+}</code></pre>
+<p><span class="ref">src/ui/ImageView.cpp:8&ndash;22</span> &middot; <span class="ref">src/app/MainWindow.cpp:22&ndash;27</span></p>
 
 <h3 id="signals-slots">Signals &amp; slots (modern syntax) <span class="badge">Step 1</span></h3>
 <p>A <em>signal</em> is emitted when something happens (<code>QAction::triggered</code> fires when the user
-   clicks the menu entry). A <em>slot</em> is a function that runs in response. <code>connect()</code> wires them
-   together. We use the <strong>function-pointer form</strong>:</p>
-<pre><code>connect(openAction, &amp;QAction::triggered, this, &amp;MainWindow::openImage);</code></pre>
-<p>This is checked at compile time &mdash; if the signal doesn't exist or the slot signature doesn't match,
-   you get an error. The old string-based form <code>SIGNAL(triggered())</code>/<code>SLOT(openImage())</code>
-   is checked at runtime and fails silently on typos. Always prefer the function-pointer form.
-   <br /><span class="ref">src/app/MainWindow.cpp:64,74</span></p>
+   clicks the menu entry). A <em>slot</em> is a function that runs in response. <code>connect()</code> wires
+   them together. We use the <strong>function-pointer form</strong>, which is checked at compile time:</p>
+<pre><code><span class="c">// src/app/MainWindow.cpp &mdash; menu action wired to a slot</span>
+auto *openImageAction = fileMenu->addAction(tr("&amp;Open Image..."));
+openImageAction->setShortcut(QKeySequence::Open);
+connect(openImageAction, &amp;QAction::triggered, this, &amp;MainWindow::openImage);</code></pre>
+<p>If the signal doesn't exist or the slot signature doesn't match, you get a compile error. The old
+   string-based form <code>SIGNAL(triggered())</code>/<code>SLOT(openImage())</code> is checked at runtime
+   and fails silently on typos. Always prefer the function-pointer form.</p>
+<p><span class="ref">src/app/MainWindow.cpp:62&ndash;74</span></p>
 
 <h3 id="lambda-slot">Connecting to a lambda <span class="badge">Step 2</span></h3>
-<p><code>connect()</code> accepts a callable instead of a member function pointer:</p>
-<pre><code>connect(m_slider, &amp;QSlider::sliderPressed, this,
+<p><code>connect()</code> accepts a callable instead of a member function pointer. The <strong>third argument
+   (the "context object")</strong> matters: it ties the lambda's lifetime to the context so the connection is
+   automatically disconnected if the context object is destroyed before the signal fires.</p>
+<pre><code><span class="c">// src/ui/VideoControls.cpp &mdash; tiny inline slot, context = this</span>
+connect(m_slider, &amp;QSlider::sliderPressed, this,
         [this]() { m_userIsDragging = true; });</code></pre>
-<p>The third argument (the "context object") matters: it ties the lambda's lifetime to <code>this</code> so the
-   connection is automatically disconnected if <code>this</code> is destroyed before the signal fires.
-   <strong>Always pass a context object</strong> with lambda slots; the two-argument form without context is a
-   common source of use-after-free bugs in Qt code.
-   <br /><span class="ref">src/ui/VideoControls.cpp:40&ndash;41</span></p>
+<p><strong>Always pass a context object</strong> with lambda slots; the two-argument form without context is
+   a common source of use-after-free bugs in Qt code.</p>
+<p><span class="ref">src/ui/VideoControls.cpp:40&ndash;41</span></p>
 
 <h3 id="signal-forwarding">Signal forwarding (the façade pattern) <span class="badge">Step 2</span></h3>
 <p>A <code>connect()</code> can wire a signal directly to <em>another signal</em>. When the first fires, the
    second fires automatically with the same arguments. This is how <code>VideoController</code> hides
    <code>QMediaPlayer</code>: it re-exports the player's signals through its own API.</p>
-<pre><code>connect(m_player, &amp;QMediaPlayer::positionChanged,
-        this,     &amp;VideoController::positionChanged);</code></pre>
+<pre><code><span class="c">// src/media/VideoController.cpp &mdash; signal-to-signal connects = a stable facade</span>
+connect(m_player, &amp;QMediaPlayer::playbackStateChanged,
+        this,     &amp;VideoController::playbackStateChanged);
+connect(m_player, &amp;QMediaPlayer::positionChanged,
+        this,     &amp;VideoController::positionChanged);
+connect(m_player, &amp;QMediaPlayer::durationChanged,
+        this,     &amp;VideoController::durationChanged);</code></pre>
 <p>Nothing outside <code>VideoController.cpp</code> ever needs to know about <code>QMediaPlayer</code>.
    Tomorrow we could swap the backend for <code>cv::VideoCapture</code> and connections to
-   <code>VideoController::positionChanged</code> keep working.
-   <br /><span class="ref">src/media/VideoController.cpp:20&ndash;32</span></p>
+   <code>VideoController::positionChanged</code> keep working.</p>
+<p><span class="ref">src/media/VideoController.cpp:24&ndash;32</span></p>
 
 <h3 id="q-disable-copy"><code>Q_DISABLE_COPY</code> <span class="badge">Step 1</span></h3>
 <p>A Qt-provided macro that deletes the copy constructor and copy assignment operator. <code>QObject</code>s
    have identity (signals are connected to specific instances), so copying them rarely means what you'd
-   expect. Adding <code>Q_DISABLE_COPY(ImageView)</code> to a widget makes accidental copies a compile error.
-   <br /><span class="ref">src/ui/ImageView.h:33</span></p>
+   expect. Adding it makes accidental copies a compile error.</p>
+<pre><code><span class="c">// src/ui/ImageView.h &mdash; bottom of the class body</span>
+class ImageView : public QWidget
+{
+    Q_OBJECT
+    <span class="c">// ... members and methods ...</span>
+private:
+    QLabel *m_label;
+    QImage  m_original;
+
+    Q_DISABLE_COPY(ImageView)      <span class="c">// no accidental copies</span>
+};</code></pre>
+<p><span class="ref">src/ui/ImageView.h:37</span></p>
 
 <!-- =========================================================== -->
 <h2 id="widgets">3. Widgets &amp; layouts</h2>
@@ -118,47 +180,103 @@
 <h3 id="qmainwindow"><code>QMainWindow</code> vs plain <code>QWidget</code> <span class="badge">Step 1</span></h3>
 <p><code>QMainWindow</code> is a specialized window that provides slots for a menu bar, status bar, toolbars,
    dock widgets, and a single <em>central widget</em>. Use it for the top-level window. Use plain
-   <code>QWidget</code> (or a subclass) for custom widgets that live <em>inside</em> other widgets &mdash; like
-   our <code>ImageView</code>.
-   <br /><span class="ref">src/app/MainWindow.h:8</span> &middot; <span class="ref">src/ui/ImageView.h:8</span></p>
+   <code>QWidget</code> (or a subclass) for custom widgets that live <em>inside</em> other widgets &mdash;
+   like our <code>ImageView</code>.</p>
+<pre><code><span class="c">// src/app/MainWindow.h &mdash; top-level window: QMainWindow</span>
+class MainWindow : public QMainWindow { <span class="c">/* menus, status bar, central widget */</span> };
+
+<span class="c">// src/ui/ImageView.h &mdash; reusable inner widget: QWidget</span>
+class ImageView  : public QWidget     { <span class="c">/* just a QLabel + scaling */</span> };</code></pre>
 
 <h3 id="qsplitter"><code>QSplitter</code> &mdash; draggable dual-pane layout <span class="badge">Step 2</span></h3>
 <p>A container widget with a draggable divider between its children. <code>setStretchFactor</code> controls
-   how extra space is distributed; <code>setChildrenCollapsible(false)</code> prevents the divider from being
-   dragged all the way to one side and hiding a pane (an easy way to lose your UI).
-   <br /><span class="ref">src/app/MainWindow.cpp:38&ndash;43</span></p>
+   how extra space is distributed; <code>setChildrenCollapsible(false)</code> prevents the divider from
+   being dragged all the way to one side and hiding a pane (an easy way to lose your UI).</p>
+<pre><code><span class="c">// src/app/MainWindow.cpp &mdash; the dual-pane central widget</span>
+auto *splitter = new QSplitter(Qt::Horizontal);
+splitter->addWidget(m_originalView);
+splitter->addWidget(m_processedView);
+splitter->setStretchFactor(0, 1);
+splitter->setStretchFactor(1, 1);
+splitter->setChildrenCollapsible(false); <span class="c">// prevents zero-width panes</span></code></pre>
+<p><span class="ref">src/app/MainWindow.cpp:41&ndash;46</span></p>
 
 <h3 id="qslider"><code>QSlider</code> <span class="badge">Step 2</span></h3>
-<p>A horizontal or vertical numeric slider. <code>setRange(min, max)</code> sets bounds; <code>setSingleStep</code>
-   / <code>setPageStep</code> control keyboard nudging; <code>setTracking(true)</code> makes
-   <code>sliderMoved</code> fire continuously while dragging (versus only on release). The drag/update
-   interlock pattern (see <a href="#drag-interlock">&sect;8 drag interlock</a>) is essential when an external
-   stream is also pushing values into the slider.
-   <br /><span class="ref">src/ui/VideoControls.cpp:21&ndash;30</span></p>
+<p>A horizontal or vertical numeric slider. <code>setRange(min, max)</code> sets bounds;
+   <code>setSingleStep</code> / <code>setPageStep</code> control keyboard nudging;
+   <code>setTracking(true)</code> makes <code>sliderMoved</code> fire continuously while dragging (versus
+   only on release).</p>
+<pre><code><span class="c">// src/ui/VideoControls.cpp &mdash; slider setup</span>
+m_slider->setRange(0, 0);
+m_slider->setSingleStep(1000);   <span class="c">// 1 second</span>
+m_slider->setPageStep(5000);     <span class="c">// 5 seconds</span>
+m_slider->setTracking(true);     <span class="c">// emit sliderMoved while dragging</span></code></pre>
+<p>The drag/update interlock pattern (see <a href="#drag-interlock">&sect;8 drag interlock</a>) is essential
+   when an external stream is also pushing values into the slider.</p>
+<p><span class="ref">src/ui/VideoControls.cpp:21&ndash;24</span></p>
 
 <h3 id="qaction"><code>QAction</code>, <code>QMenu</code>, <code>QMenuBar</code> <span class="badge">Step 1</span></h3>
 <p>An action represents <em>something the user can do</em>, decoupled from where it appears. The same
    <code>QAction</code> can live in a menu, a toolbar, and a context menu simultaneously, with one shortcut
    and one icon. That decoupling is why Qt models commands this way even when you only use the action from
-   one menu.
-   <br /><span class="ref">src/app/MainWindow.cpp:62&ndash;76</span></p>
+   one menu.</p>
+<pre><code><span class="c">// src/app/MainWindow.cpp &mdash; building the File menu</span>
+auto *fileMenu = menuBar()->addMenu(tr("&amp;File"));
+
+auto *openImageAction = fileMenu->addAction(tr("&amp;Open Image..."));
+openImageAction->setShortcut(QKeySequence::Open);
+connect(openImageAction, &amp;QAction::triggered, this, &amp;MainWindow::openImage);
+
+auto *openVideoAction = fileMenu->addAction(tr("Open &amp;Video..."));
+openVideoAction->setShortcut(QKeySequence(tr("Ctrl+Shift+O")));
+connect(openVideoAction, &amp;QAction::triggered, this, &amp;MainWindow::openVideo);
+
+fileMenu->addSeparator();
+
+auto *exitAction = fileMenu->addAction(tr("E&amp;xit"));
+exitAction->setShortcut(QKeySequence::Quit);
+connect(exitAction, &amp;QAction::triggered, qApp, &amp;QApplication::quit);</code></pre>
+<p><span class="ref">src/app/MainWindow.cpp:58&ndash;75</span></p>
 
 <h3 id="layouts">Layouts (<code>QVBoxLayout</code>, <code>QHBoxLayout</code>) <span class="badge">Step 1</span></h3>
 <p>Layouts handle widget positioning and resize propagation automatically. We use a zero-margin
-   <code>QVBoxLayout</code> in <code>ImageView</code> to make the internal <code>QLabel</code> fill the widget;
-   a <code>QHBoxLayout</code> in <code>VideoControls</code> arranges play button + slider + label horizontally.
-   Hand-rolling <code>setGeometry()</code> works but is fragile &mdash; always reach for a layout first.
-   <br /><span class="ref">src/ui/ImageView.cpp:19&ndash;22</span> &middot; <span class="ref">src/ui/VideoControls.cpp:31&ndash;35</span></p>
+   <code>QVBoxLayout</code> in <code>ImageView</code>; a <code>QHBoxLayout</code> in
+   <code>VideoControls</code>. Hand-rolling <code>setGeometry()</code> works but is fragile &mdash; always
+   reach for a layout first.</p>
+<pre><code><span class="c">// src/ui/ImageView.cpp &mdash; vertical layout, no margins, single child fills</span>
+auto *layout = new QVBoxLayout(this);
+layout->setContentsMargins(0, 0, 0, 0);
+layout->addWidget(m_label);
+
+<span class="c">// src/ui/VideoControls.cpp &mdash; horizontal: button | slider (stretch) | label</span>
+auto *layout = new QHBoxLayout(this);
+layout->setContentsMargins(6, 4, 6, 4);
+layout->addWidget(m_playPauseBtn);
+layout->addWidget(m_slider, /*stretch=*/1);
+layout->addWidget(m_timeLabel);</code></pre>
+<p><span class="ref">src/ui/ImageView.cpp:19&ndash;21</span> &middot; <span class="ref">src/ui/VideoControls.cpp:29&ndash;33</span></p>
 
 <!-- =========================================================== -->
 <h2 id="events">4. Events</h2>
 
 <h3 id="resize-event"><code>resizeEvent</code> overrides <span class="badge">Step 1</span></h3>
 <p>Qt delivers events to widgets through virtual methods on <code>QWidget</code>: <code>paintEvent</code>,
-   <code>mousePressEvent</code>, <code>resizeEvent</code>, &hellip; Override the one you care about. Always
-   call the base-class implementation (<code>QWidget::resizeEvent(event)</code>) unless you specifically
-   intend to suppress the default behaviour.
-   <br /><span class="ref">src/ui/ImageView.cpp:39&ndash;45</span></p>
+   <code>mousePressEvent</code>, <code>resizeEvent</code>, &hellip; Override the one you care about.
+   <strong>Always call the base-class implementation</strong> unless you specifically intend to suppress the
+   default behaviour.</p>
+<pre><code><span class="c">// src/ui/ImageView.h &mdash; declaration</span>
+protected:
+    void resizeEvent(QResizeEvent *event) override;
+
+<span class="c">// src/ui/ImageView.cpp &mdash; rescale the displayed pixmap whenever we change size</span>
+void ImageView::resizeEvent(QResizeEvent *event)
+{
+    QWidget::resizeEvent(event);    <span class="c">// always chain to the base</span>
+    if (!m_original.isNull()) {
+        updateScaledPixmap();
+    }
+}</code></pre>
+<p><span class="ref">src/ui/ImageView.h:29</span> &middot; <span class="ref">src/ui/ImageView.cpp:41&ndash;47</span></p>
 
 <!-- =========================================================== -->
 <h2 id="images">5. Images &amp; pixels</h2>
@@ -172,22 +290,52 @@
   <tr><td>Best for</td><td>Loading, processing, inference, storage</td><td>Drawing to a widget</td></tr>
 </table>
 <p>Rule of thumb: <strong>store <code>QImage</code>, convert to <code>QPixmap</code> at the last moment</strong>
-   when assigning to a <code>QLabel</code>. This rule will matter a great deal in Step 3, when inference runs
-   on a worker thread &mdash; the result must come back as a <code>QImage</code>.
-   <br /><span class="ref">src/ui/ImageView.cpp:55&ndash;65</span></p>
+   when assigning to a <code>QLabel</code>.</p>
+<pre><code><span class="c">// src/ui/ImageView.cpp &mdash; we keep m_original as QImage; QPixmap only at the moment of drawing</span>
+const QPixmap pixmap = QPixmap::fromImage(m_original).scaled(
+    target,
+    Qt::KeepAspectRatio,
+    Qt::SmoothTransformation);
+m_label->setPixmap(pixmap);</code></pre>
+<p>This rule will matter a great deal in Step 3, when inference runs on a worker thread &mdash; the result
+   must come back as a <code>QImage</code>.</p>
+<p><span class="ref">src/ui/ImageView.cpp:58&ndash;63</span></p>
 
 <h3 id="qimagereader"><code>QImageReader</code> over <code>QImage(path)</code> <span class="badge">Step 1</span></h3>
 <p>Both can load images, but <code>QImageReader</code> exposes <code>errorString()</code>, lets you query the
    file's format without loading it, and provides <code>setAutoTransform(true)</code> to honour EXIF
-   orientation (so phone photos don't appear sideways). The constructor form gives you a generic null image
-   on failure with no clue why.
-   <br /><span class="ref">src/app/MainWindow.cpp:120&ndash;130</span></p>
+   orientation. The constructor form gives you a generic null image on failure with no clue why.</p>
+<pre><code><span class="c">// src/app/MainWindow.cpp &mdash; robust image loading with diagnosable errors</span>
+QImageReader reader(path);
+reader.setAutoTransform(true);             <span class="c">// honour EXIF orientation</span>
+const QImage image = reader.read();
+
+if (image.isNull()) {
+    QMessageBox::warning(this, tr("Could not open image"),
+        tr("Failed to load \"%1\":\n%2").arg(path, reader.errorString()));
+    return;
+}</code></pre>
+<p><span class="ref">src/app/MainWindow.cpp:120&ndash;129</span></p>
 
 <h3 id="rescale-original">Rescale from the original, every time <span class="badge">Step 1</span></h3>
-<p>Each scale-down loses information. If you scale on every resize starting from the previously-scaled pixmap,
-   quality decays visibly. <code>ImageView::updateScaledPixmap()</code> always starts from the stored
-   <code>QImage</code>, never from the current <code>QPixmap</code>.
-   <br /><span class="ref">src/ui/ImageView.cpp:55&ndash;65</span></p>
+<p>Each scale-down loses information. If you scale on every resize starting from the previously-scaled
+   pixmap, quality decays visibly. <code>ImageView::updateScaledPixmap()</code> always starts from the
+   stored <code>QImage</code>, never from the current <code>QPixmap</code>.</p>
+<pre><code><span class="c">// src/ui/ImageView.cpp &mdash; resize-safe rescale</span>
+void ImageView::updateScaledPixmap()
+{
+    <span class="c">// Always rescale from the original. Rescaling a scaled pixmap repeatedly</span>
+    <span class="c">// produces visible quality loss as the user resizes the window.</span>
+    const QSize target = m_label->size();
+    if (target.isEmpty()) return;
+
+    const QPixmap pixmap = QPixmap::fromImage(m_original).scaled(
+        target,
+        Qt::KeepAspectRatio,
+        Qt::SmoothTransformation);
+    m_label->setPixmap(pixmap);
+}</code></pre>
+<p><span class="ref">src/ui/ImageView.cpp:49&ndash;64</span></p>
 
 <!-- =========================================================== -->
 <h2 id="io">6. Files &amp; user interaction</h2>
@@ -196,27 +344,58 @@
 <p>A static convenience function that pops up the OS file picker and blocks until the user chooses a file or
    cancels. Returns an empty <code>QString</code> on cancel &mdash; not an error, just nothing to do. The
    filter string is built dynamically from <code>QImageReader::supportedImageFormats()</code> so any plugin
-   Qt picks up at runtime (WebP, AVIF, &hellip;) is automatically included.
-   <br /><span class="ref">src/app/MainWindow.cpp:116&ndash;120</span></p>
+   Qt picks up at runtime (WebP, AVIF, &hellip;) is automatically included.</p>
+<pre><code><span class="c">// src/app/MainWindow.cpp &mdash; image file picker with plugin-aware filter</span>
+QStringList patterns;
+for (const QByteArray &amp;fmt : QImageReader::supportedImageFormats()) {
+    patterns &lt;&lt; QStringLiteral("*.%1").arg(QString::fromLatin1(fmt));
+}
+const QString filter = tr("Images (%1);;All files (*)").arg(patterns.join(' '));
+
+const QString path = QFileDialog::getOpenFileName(
+    this, tr("Open Image"), QString(), filter);
+if (path.isEmpty()) return;                <span class="c">// user cancelled</span></code></pre>
+<p><span class="ref">src/app/MainWindow.cpp:108&ndash;118</span></p>
 
 <h3 id="qmessagebox"><code>QMessageBox</code> <span class="badge">Step 1</span></h3>
 <p>The simple way to show a user-visible error or confirmation. <code>QMessageBox::warning</code>,
    <code>::critical</code>, <code>::information</code>, <code>::question</code> are static convenience calls.
    Use it whenever something goes wrong in a way the user should know about &mdash; not <code>qDebug()</code>,
-   which only the developer sees.
-   <br /><span class="ref">src/app/MainWindow.cpp:125&ndash;128</span></p>
+   which only the developer sees.</p>
+<pre><code><span class="c">// src/app/MainWindow.cpp &mdash; user-visible error from a failed load</span>
+QMessageBox::warning(
+    this,
+    tr("Could not open image"),
+    tr("Failed to load \"%1\":\n%2").arg(path, reader.errorString()));</code></pre>
+<p><span class="ref">src/app/MainWindow.cpp:125&ndash;128</span></p>
 
 <!-- =========================================================== -->
 <h2 id="multimedia">7. Multimedia pipeline</h2>
 
 <h3 id="qmediaplayer"><code>QMediaPlayer</code> &mdash; the playback engine <span class="badge">Step 2</span></h3>
 <p>The high-level media-playback object in Qt Multimedia. You hand it a URL via <code>setSource()</code>,
-   call <code>play()</code> / <code>pause()</code> / <code>stop()</code> / <code>setPosition()</code>, and it
-   delegates to a platform backend (FFmpeg on your install) to decode audio and video. It exposes signals
+   call <code>play()</code> / <code>pause()</code> / <code>stop()</code> / <code>setPosition()</code>, and
+   it delegates to a platform backend (FFmpeg on your install) to decode audio and video. It exposes signals
    for <code>playbackStateChanged</code>, <code>positionChanged</code>, <code>durationChanged</code>,
    <code>mediaStatusChanged</code>, and <code>errorOccurred</code>. It does <em>not</em> render anything by
-   itself &mdash; you give it a sink to send frames to.
-   <br /><span class="ref">src/media/VideoController.cpp:9&ndash;15</span></p>
+   itself &mdash; you give it a sink to send frames to.</p>
+<pre><code><span class="c">// src/media/VideoController.cpp &mdash; create the player, attach a sink, open a file</span>
+VideoController::VideoController(QObject *parent)
+    : QObject(parent)
+    , m_player(new QMediaPlayer(this))
+    , m_sink(new QVideoSink(this))
+{
+    m_player->setVideoSink(m_sink);
+    <span class="c">// ... connect signals ...</span>
+}
+
+bool VideoController::openFile(const QString &amp;path)
+{
+    m_player->stop();
+    m_player->setSource(QUrl::fromLocalFile(path));
+    return true;
+}</code></pre>
+<p><span class="ref">src/media/VideoController.cpp:10&ndash;15,43&ndash;54</span></p>
 
 <h3 id="qvideosink"><code>QVideoSink</code> + <code>QVideoFrame</code> &mdash; the frame tap <span class="badge">Step 2</span></h3>
 <p><code>QVideoSink</code> is a frame consumer object. Attach it to a player with
@@ -224,9 +403,23 @@
    <code>videoFrameChanged</code> signal &mdash; on the GUI thread. <code>QVideoFrame</code> holds the raw
    pixel data in whatever format the decoder produced (typically YUV from FFmpeg);
    <code>frame.toImage()</code> performs the colour conversion to <code>QImage</code> for display or
-   inference. The alternative &mdash; <code>QVideoWidget</code> &mdash; renders directly to the screen but
-   gives you no way to intercept frames, which would block Step 3 entirely.
-   <br /><span class="ref">src/media/VideoController.cpp:78&ndash;100</span></p>
+   inference.</p>
+<pre><code><span class="c">// src/media/VideoController.cpp &mdash; connect the sink and translate frames to QImage</span>
+connect(m_sink, &amp;QVideoSink::videoFrameChanged,
+        this,   &amp;VideoController::handleVideoFrame);
+
+<span class="c">// ...</span>
+
+void VideoController::handleVideoFrame(const QVideoFrame &amp;frame)
+{
+    if (!frame.isValid()) return;
+    const QImage image = frame.toImage();   <span class="c">// YUV -&gt; RGB happens here</span>
+    if (image.isNull()) return;
+    emit frameReady(image);
+}</code></pre>
+<p>The alternative &mdash; <code>QVideoWidget</code> &mdash; renders directly to the screen but gives you no
+   way to intercept frames, which would block Step 3 entirely.</p>
+<p><span class="ref">src/media/VideoController.cpp:18&ndash;19,79&ndash;107</span></p>
 
 <h3 id="mediastatus"><code>MediaStatus</code> vs <code>PlaybackState</code> <span class="badge">Step 2</span></h3>
 <p>Two different state machines on <code>QMediaPlayer</code>, easy to confuse:</p>
@@ -235,45 +428,122 @@
       <code>PausedState</code>. What the user sees on the play/pause button.</li>
   <li><strong><code>MediaStatus</code></strong>: <code>NoMedia</code> &rarr; <code>LoadingMedia</code> &rarr;
       <code>LoadedMedia</code> &rarr; <code>BufferingMedia</code> &rarr; <code>BufferedMedia</code> &rarr;
-      <code>EndOfMedia</code>, plus <code>InvalidMedia</code> on decode failure. The diagnostic state machine
-      &mdash; this is what tells you <em>why</em> playback isn't progressing.</li>
+      <code>EndOfMedia</code>, plus <code>InvalidMedia</code> on decode failure. The diagnostic state
+      machine.</li>
 </ul>
+<pre><code><span class="c">// src/media/VideoController.cpp &mdash; status changes are the most informative diagnostic</span>
+void VideoController::handleMediaStatus(QMediaPlayer::MediaStatus status)
+{
+    const char *name = "?";
+    switch (status) {
+        case QMediaPlayer::NoMedia:        name = "NoMedia";        break;
+        case QMediaPlayer::LoadingMedia:   name = "LoadingMedia";   break;
+        case QMediaPlayer::LoadedMedia:    name = "LoadedMedia";    break;
+        case QMediaPlayer::StalledMedia:   name = "StalledMedia";   break;
+        case QMediaPlayer::BufferingMedia: name = "BufferingMedia"; break;
+        case QMediaPlayer::BufferedMedia:  name = "BufferedMedia";  break;
+        case QMediaPlayer::EndOfMedia:     name = "EndOfMedia";     break;
+        case QMediaPlayer::InvalidMedia:   name = "InvalidMedia";   break;
+    }
+    qDebug() &lt;&lt; "[VideoController] mediaStatus =" &lt;&lt; name;
+
+    if (status == QMediaPlayer::InvalidMedia) {
+        emit errorOccurred(tr("Codec/container unsupported, or file is corrupt."));
+    }
+}</code></pre>
 <p>When something goes wrong, log <code>mediaStatus</code> transitions first; the <code>PlaybackState</code>
-   will eventually catch up but tells you nothing about cause.
-   <br /><span class="ref">src/media/VideoController.cpp:120&ndash;147</span></p>
+   will eventually catch up but tells you nothing about cause.</p>
+<p><span class="ref">src/media/VideoController.cpp:120&ndash;145</span></p>
 
 <!-- =========================================================== -->
 <h2 id="patterns">8. UI patterns drawn from the codebase</h2>
 
 <h3 id="drag-interlock">Slider drag/update interlock <span class="badge">Step 2</span></h3>
-<p>When the controller calls <code>VideoControls::setPosition()</code> 30&times;/second to advance the slider,
-   that's fine &mdash; <em>unless the user is mid-drag</em>. Naïve code yanks the thumb out from under their
-   finger. The fix is a small state machine: <code>sliderPressed</code> sets <code>m_userIsDragging = true</code>;
-   <code>sliderReleased</code> clears it and emits a single <code>seekRequested</code>. While dragging, the
-   controller's position updates are ignored. This is a generally applicable pattern any time external state
-   and user input fight for the same widget.
-   <br /><span class="ref">src/ui/VideoControls.cpp:40&ndash;46,92&ndash;95</span></p>
+<p>When the controller calls <code>VideoControls::setPosition()</code> 30&times;/second to advance the
+   slider, that's fine &mdash; <em>unless the user is mid-drag</em>. Naïve code yanks the thumb out from
+   under their finger. The fix is a small state machine.</p>
+<pre><code><span class="c">// src/ui/VideoControls.cpp &mdash; the press/release flag pattern</span>
+connect(m_slider, &amp;QSlider::sliderPressed, this,
+        [this]() { m_userIsDragging = true; });
+connect(m_slider, &amp;QSlider::sliderReleased,
+        this,     &amp;VideoControls::onSliderReleased);
+
+<span class="c">// ...</span>
+
+void VideoControls::setPosition(qint64 milliseconds)
+{
+    m_position = milliseconds;
+    if (!m_userIsDragging) {                <span class="c">// don't fight the user's finger</span>
+        m_slider->setValue(static_cast&lt;int&gt;(milliseconds));
+    }
+    updateTimeLabel();
+}
+
+void VideoControls::onSliderReleased()
+{
+    m_userIsDragging = false;
+    emit seekRequested(static_cast&lt;qint64&gt;(m_slider->value())); <span class="c">// one seek on release</span>
+}</code></pre>
+<p>This is a generally applicable pattern any time external state and user input fight for the same widget.</p>
+<p><span class="ref">src/ui/VideoControls.cpp:40&ndash;45,67&ndash;75,92&ndash;95</span></p>
 
 <h3 id="facade-pattern">Controller as façade <span class="badge">Step 2</span></h3>
 <p><code>VideoController</code> hides <code>QMediaPlayer</code> entirely. Nothing outside
-   <code>VideoController.cpp</code> includes <code>&lt;QMediaPlayer&gt;</code>. Two payoffs:</p>
-<ul>
-  <li><strong>Encapsulation.</strong> Replacing Qt Multimedia with <code>cv::VideoCapture</code> or a streaming
-      source is a single-file change.</li>
-  <li><strong>Pipeline fork point.</strong> In Step 3, <code>frameReady</code> will fan out to both the
-      on-screen views <em>and</em> an inference backend &mdash; doing that in the controller (one place) is
-      cleaner than scattering it across <code>MainWindow</code>.</li>
-</ul>
-<p>This is the controller from <em>Model-View-Controller</em>, but introduced only when a real engine exists
-   to coordinate &mdash; not as a premature framework choice.</p>
+   <code>VideoController.cpp</code> includes <code>&lt;QMediaPlayer&gt;</code>. Its <em>own</em> public API is
+   what the rest of the app sees:</p>
+<pre><code><span class="c">// src/media/VideoController.h &mdash; the stable public face</span>
+class VideoController : public QObject
+{
+    Q_OBJECT
+public:
+    bool openFile(const QString &amp;path);
+
+public slots:
+    void play();
+    void pause();
+    void togglePlayPause();
+    void stop();
+    void seek(qint64 milliseconds);
+
+signals:
+    void frameReady(const QImage &amp;image);
+    void playbackStateChanged(QMediaPlayer::PlaybackState state);
+    void positionChanged(qint64 milliseconds);
+    void durationChanged(qint64 milliseconds);
+    void errorOccurred(const QString &amp;message);
+};</code></pre>
+<p>Two payoffs: <strong>encapsulation</strong> (replacing Qt Multimedia with
+   <code>cv::VideoCapture</code> is a single-file change) and a <strong>pipeline fork point</strong> (in
+   Step 3, <code>frameReady</code> will fan out to both the views <em>and</em> an inference backend).</p>
+<p><span class="ref">src/media/VideoController.h:22&ndash;58</span></p>
 
 <h3 id="emit-intent">Widget emits intent, app dispatches <span class="badge">Step 2</span></h3>
-<p><code>VideoControls</code> doesn't own a <code>QMediaPlayer</code>; it emits
-   <code>playPauseClicked()</code> / <code>seekRequested(ms)</code> and consumes
-   <code>setPosition(ms)</code> / <code>setPlaying(bool)</code>. <code>MainWindow</code> matches the two
-   halves up. The widget could be driven by a unit test, an OpenCV-based controller, or a remote streaming
-   pipeline without modification. <strong>General rule:</strong> UI widgets emit intent; application code
-   dispatches it. This keeps GUI tests feasible and refactors local.</p>
+<p><code>VideoControls</code> doesn't own a <code>QMediaPlayer</code>; it emits user-intent signals and
+   consumes display-update slots. <code>MainWindow</code> matches the two halves up. The widget could be
+   driven by a unit test, an OpenCV-based controller, or a remote streaming pipeline without modification.</p>
+<pre><code><span class="c">// src/ui/VideoControls.h &mdash; the widget's public face: intent out, display in</span>
+public slots:
+    void setEnabledControls(bool enabled);
+    void setDuration(qint64 milliseconds);
+    void setPosition(qint64 milliseconds);
+    void setPlaying(bool playing);
+
+signals:
+    void playPauseClicked();
+    void seekRequested(qint64 milliseconds);</code></pre>
+<pre><code><span class="c">// src/app/MainWindow.cpp &mdash; MainWindow wires the two halves together</span>
+connect(m_controls, &amp;VideoControls::playPauseClicked,
+        m_controller, &amp;VideoController::togglePlayPause);
+connect(m_controls, &amp;VideoControls::seekRequested,
+        m_controller, &amp;VideoController::seek);
+
+connect(m_controller, &amp;VideoController::positionChanged,
+        m_controls,   &amp;VideoControls::setPosition);
+connect(m_controller, &amp;VideoController::durationChanged,
+        m_controls,   &amp;VideoControls::setDuration);</code></pre>
+<p><strong>General rule:</strong> UI widgets emit intent; application code dispatches it. This keeps GUI
+   tests feasible and refactors local.</p>
+<p><span class="ref">src/ui/VideoControls.h:20&ndash;28</span> &middot; <span class="ref">src/app/MainWindow.cpp:101&ndash;105</span></p>
 
 <!-- =========================================================== -->
 <h2 id="deployment">9. Deployment &amp; runtime on Windows</h2>
@@ -306,15 +576,36 @@
    <code>windeployqt</code> doing a clean full deployment is the distribution fix.</strong></p>
 
 <h3 id="windeployqt"><code>windeployqt</code> <span class="badge">Step 2</span></h3>
-<p>Qt's bundled tool that walks an .exe, figures out which Qt DLLs and plugins it needs, and copies them next
-   to the executable along with a generated <code>qt.conf</code> that fixes up the plugin search path. Run it
-   once when you want a self-contained distribution; never run it half-way or you get the
+<p>Qt's bundled tool that walks an .exe, figures out which Qt DLLs and plugins it needs, and copies them
+   next to the executable along with a generated <code>qt.conf</code> that fixes up the plugin search path.
+   Run it once when you want a self-contained distribution; never run it half-way or you get the
    <a href="#plugin-discovery">plugin discovery</a> landmine.</p>
-<pre><code>C:\Qt\6.11.1\mingw_64\bin\windeployqt.exe `
+<pre><code><span class="c"># PowerShell &mdash; turn a built .exe into a self-contained deployment</span>
+C:\Qt\6.11.1\mingw_64\bin\windeployqt.exe `
     C:\Projects\InferenceVisualizer\build\bin\InferenceVisualizer.exe</code></pre>
 
 <h3 id="env-block">The VS Code <code>launch.json</code> environment block <span class="badge">Step 2</span></h3>
-<p>When you launch outside Qt Creator, four environment variables typically need to be set explicitly:</p>
+<p>When you launch outside Qt Creator, four environment variables typically need to be set explicitly.
+   The actual block we use:</p>
+<pre><code><span class="c">// .vscode/launch.json &mdash; environment array (excerpt)</span>
+"environment": [
+    {
+        "name": "PATH",
+        "value": "C:\\Qt\\6.11.1\\mingw_64\\bin;C:\\Qt\\Tools\\mingw1310_64\\bin;${env:PATH}"
+    },
+    {
+        "name": "QT_PLUGIN_PATH",
+        "value": "C:\\Qt\\6.11.1\\mingw_64\\plugins"
+    },
+    {
+        "name": "QT_MEDIA_BACKEND",
+        "value": "ffmpeg"
+    },
+    {
+        "name": "QT_LOGGING_RULES",
+        "value": "qt.multimedia.*=true"
+    }
+]</code></pre>
 <table>
   <tr><th>Variable</th><th>Why it's there</th></tr>
   <tr><td><code>PATH</code></td>
@@ -324,12 +615,13 @@
   <tr><td><code>QT_PLUGIN_PATH</code></td>
       <td>Points Qt at its <code>plugins/</code> dir directly &mdash; bypasses any baked-in-path confusion.</td></tr>
   <tr><td><code>QT_MEDIA_BACKEND</code></td>
-      <td><code>ffmpeg</code> forces the FFmpeg plugin instead of Windows Media Foundation &mdash; broader codec
-          coverage and reproducible builds.</td></tr>
+      <td><code>ffmpeg</code> forces the FFmpeg plugin instead of Windows Media Foundation &mdash; broader
+          codec coverage and reproducible builds.</td></tr>
   <tr><td><code>QT_LOGGING_RULES</code></td>
-      <td><code>qt.multimedia.*=true</code> (or similar) turns on Qt's internal logging categories so the file
-          message handler captures backend-level decisions.</td></tr>
+      <td><code>qt.multimedia.*=true</code> turns on Qt's internal logging categories so the file message
+          handler captures backend-level decisions.</td></tr>
 </table>
+<p><span class="ref">.vscode/launch.json:13&ndash;30</span></p>
 
 <!-- =========================================================== -->
 <h2 id="logging">10. Diagnostics &amp; logging</h2>
@@ -337,21 +629,53 @@
 <h3 id="qdebug-routing">Where <code>qDebug()</code> goes on Windows <span class="badge">Step 2</span></h3>
 <p>On Windows, a Qt GUI app (linked with the <code>WIN32</code> subsystem flag) detaches from the console.
    <code>qDebug()</code> output goes to <code>OutputDebugString</code> instead of stdout. VS Code's
-   <code>cppdbg</code> debug console does <strong>not</strong> show <code>OutputDebugString</code> output &mdash;
-   only Sysinternals' <em>DbgView</em> does. Qt Creator's "Application Output" pane captures it for you &mdash;
-   so in Qt Creator it just works, anywhere else it appears to vanish.</p>
+   <code>cppdbg</code> debug console does <strong>not</strong> show <code>OutputDebugString</code> output
+   &mdash; only Sysinternals' <em>DbgView</em> does. Qt Creator's "Application Output" pane captures it for
+   you &mdash; so in Qt Creator it just works, anywhere else it appears to vanish.</p>
 
 <h3 id="message-handler"><code>qInstallMessageHandler</code> &mdash; redirecting Qt logs <span class="badge">Step 2</span></h3>
-<p>The robust workaround for the routing problem above: install a custom message handler that writes to a log
-   file. The handler is called for every <code>qDebug</code>/<code>qInfo</code>/<code>qWarning</code>/<code>qCritical</code>/<code>qFatal</code>;
-   we format, timestamp, and append. Truncating on each launch keeps the file scoped to one run.
-   <br /><span class="ref">src/main.cpp:24&ndash;65</span></p>
+<p>The robust workaround for the routing problem above: install a custom message handler that writes to a
+   log file. The handler is called for every <code>qDebug</code>/<code>qInfo</code>/<code>qWarning</code>/<code>qCritical</code>/<code>qFatal</code>;
+   we format, timestamp, and append. Truncating on each launch keeps the file scoped to one run.</p>
+<pre><code><span class="c">// src/main.cpp &mdash; the message handler itself</span>
+void fileMessageHandler(QtMsgType type, const QMessageLogContext &amp;ctx, const QString &amp;msg)
+{
+    QMutexLocker lock(&amp;g_logMutex);
+    if (!g_logFile.isOpen()) return;
+
+    const char *level = "DBG ";
+    switch (type) {
+        case QtDebugMsg:    level = "DBG "; break;
+        case QtInfoMsg:     level = "INFO"; break;
+        case QtWarningMsg:  level = "WARN"; break;
+        case QtCriticalMsg: level = "CRIT"; break;
+        case QtFatalMsg:    level = "FATL"; break;
+    }
+    g_logStream &lt;&lt; QDateTime::currentDateTime().toString("HH:mm:ss.zzz")
+                &lt;&lt; ' ' &lt;&lt; level &lt;&lt; ' ' &lt;&lt; msg &lt;&lt; '\n';
+    g_logStream.flush();
+}
+
+<span class="c">// installFileLogger() truncates the file and registers the handler</span>
+void installFileLogger()
+{
+    const QString path = QCoreApplication::applicationDirPath()
+                       + QStringLiteral("/inference-visualizer.log");
+    g_logFile.setFileName(path);
+    if (g_logFile.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+        g_logStream.setDevice(&amp;g_logFile);
+        qInstallMessageHandler(fileMessageHandler);
+    }
+}</code></pre>
+<p><span class="ref">src/main.cpp:29&ndash;63</span></p>
 
 <h3 id="logging-rules"><code>QT_LOGGING_RULES</code> <span class="badge">Step 2</span></h3>
 <p>Qt's internal modules emit categorized debug output via <code>qCDebug(...)</code>. Categories are off by
-   default and turned on with the <code>QT_LOGGING_RULES</code> environment variable
-   (e.g. <code>qt.multimedia.*=true</code>). Combined with the file message handler, this gives you a record of
-   which plugin loaded, which codec was chosen, and why playback failed if it did.</p>
+   default and turned on with the <code>QT_LOGGING_RULES</code> environment variable. Combined with the file
+   message handler, this gives you a record of which plugin loaded, which codec was chosen, and why playback
+   failed if it did.</p>
+<pre><code><span class="c"># Set as a launch-environment variable; multiple rules joined by ';'</span>
+QT_LOGGING_RULES=qt.multimedia.*=true;qt.qpa.*=false</code></pre>
 
 <!-- =========================================================== -->
 <h2 id="cpp">11. Modern C++ patterns</h2>
@@ -360,71 +684,122 @@
 <p>Replaces traditional <code>#ifndef</code>/<code>#define</code>/<code>#endif</code> header guards.
    Supported by every modern compiler (GCC, Clang, MSVC), one line instead of three, no risk of macro-name
    collisions across files.</p>
+<pre><code><span class="c">// src/ui/ImageView.h &mdash; one-line header guard</span>
+#pragma once
+
+#include &lt;QImage&gt;
+#include &lt;QWidget&gt;
+<span class="c">// ...</span></code></pre>
 
 <h3 id="explicit"><code>explicit</code> on single-argument constructors <span class="badge">Step 1</span></h3>
 <p>Prevents the compiler from using a constructor for an unintended implicit conversion. Without it, a
    function expecting <code>ImageView</code> would silently accept any <code>QWidget*</code> by wrapping it
-   in a new <code>ImageView</code>. Always mark single-argument constructors <code>explicit</code> unless you
-   want that conversion.
-   <br /><span class="ref">src/ui/ImageView.h:19</span> &middot; <span class="ref">src/app/MainWindow.h:13</span></p>
+   in a new <code>ImageView</code>.</p>
+<pre><code><span class="c">// src/ui/ImageView.h &mdash; explicit blocks implicit conversion from QWidget*</span>
+public:
+    explicit ImageView(QWidget *parent = nullptr);</code></pre>
+<p>Always mark single-argument constructors <code>explicit</code> unless you specifically want the
+   conversion.</p>
+<p><span class="ref">src/ui/ImageView.h:21</span> &middot; <span class="ref">src/app/MainWindow.h:19</span></p>
 
 <h3 id="override"><code>override</code> <span class="badge">Step 1</span></h3>
 <p>Marks a function as intentionally overriding a virtual from a base class. If the base signature changes
-   (e.g. Qt 7 renames or re-types <code>resizeEvent</code>), <code>override</code> turns a silent no-op into a
-   compile error. Cheap insurance.
-   <br /><span class="ref">src/ui/ImageView.h:25</span></p>
+   (e.g. Qt 7 renames or re-types <code>resizeEvent</code>), <code>override</code> turns a silent no-op into
+   a compile error. Cheap insurance.</p>
+<pre><code><span class="c">// src/ui/ImageView.h &mdash; override on virtual function</span>
+protected:
+    void resizeEvent(QResizeEvent *event) override;</code></pre>
+<p><span class="ref">src/ui/ImageView.h:29</span></p>
 
 <h3 id="forward-decl">Forward declarations in headers <span class="badge">Step 1</span></h3>
-<p>Headers like <code>ImageView.h</code> only need to know <code>QLabel</code> exists (it's a pointer member),
-   not its full definition. A forward declaration <code>class QLabel;</code> avoids dragging the full
-   <code>&lt;QLabel&gt;</code> header into every translation unit that includes <code>ImageView.h</code>.
-   Faster builds and less coupling. Full includes go in the <code>.cpp</code>.
-   <br /><span class="ref">src/ui/ImageView.h:6&ndash;7</span> &middot; <span class="ref">src/app/MainWindow.h:5</span></p>
+<p>Headers only need to know a class exists when they hold a pointer or reference to it &mdash; not its full
+   definition. A forward declaration avoids dragging a full Qt header into every translation unit that
+   includes yours. Faster builds and less coupling. Full includes go in the <code>.cpp</code>.</p>
+<pre><code><span class="c">// src/ui/ImageView.h &mdash; just declare what we need</span>
+#include &lt;QImage&gt;        <span class="c">// needed: QImage is a value member</span>
+#include &lt;QWidget&gt;       <span class="c">// needed: we inherit from it</span>
+
+class QLabel;            <span class="c">// only a pointer member &mdash; forward decl is enough</span>
+class QResizeEvent;      <span class="c">// only a function parameter &mdash; forward decl is enough</span></code></pre>
+<p><span class="ref">src/ui/ImageView.h:3&ndash;7</span> &middot; <span class="ref">src/app/MainWindow.h:6&ndash;8</span></p>
 
 <h3 id="const-ref">Const-ref parameter passing for "big" types <span class="badge">Step 1</span></h3>
 <p><code>setImage(const QImage&amp; image)</code> avoids copying the image into the function. In Qt's case
    <code>QImage</code> uses <strong>implicit sharing</strong> (copy-on-write), so even a by-value copy would
    be cheap until the image is modified &mdash; but const-ref expresses intent (we don't take ownership, we
-   don't modify) and is the modern-C++ default for non-trivial types.
-   <br /><span class="ref">src/ui/ImageView.h:21</span></p>
+   don't modify) and is the modern-C++ default for non-trivial types.</p>
+<pre><code><span class="c">// src/ui/ImageView.h &mdash; const-ref parameter for a non-trivial type</span>
+void setImage(const QImage &amp;image);</code></pre>
+<p><span class="ref">src/ui/ImageView.h:23</span></p>
 
 <h3 id="raw-pointers">Raw pointers in Qt code <span class="badge">Step 1</span></h3>
 <p>You'll see <code>QLabel* m_label;</code> rather than <code>std::unique_ptr&lt;QLabel&gt;</code>. This is
    <strong>correct in Qt</strong>: ownership is delegated to the parent-child tree (see
    <a href="#parent-child">parent-child ownership</a>). For non-<code>QObject</code> types (e.g. an
-   <code>InferenceBackend</code> we'll add in Step 3), we'll absolutely use <code>std::unique_ptr</code>. The
-   two systems should not be mixed for the same object.</p>
+   <code>InferenceBackend</code> we'll add in Step 3), we'll absolutely use <code>std::unique_ptr</code>.
+   The two systems should not be mixed for the same object.</p>
+<pre><code><span class="c">// src/ui/ImageView.h &mdash; raw pointer, owned by Qt parent-child</span>
+private:
+    QLabel *m_label;    <span class="c">// owned by Qt's parent-child system (this widget)</span>
+    QImage  m_original; <span class="c">// value member &mdash; trivially owned</span></code></pre>
+<p><span class="ref">src/ui/ImageView.h:34&ndash;35</span></p>
 
 <h3 id="auto"><code>auto</code> for local declarations <span class="badge">Step 1</span></h3>
-<p><code>auto *fileMenu = menuBar()-&gt;addMenu(tr(&quot;&amp;File&quot;));</code> &mdash; the type
-   (<code>QMenu*</code>) is obvious from the right-hand side. <code>auto</code> shortens declarations and
-   prevents accidental implicit conversions. Use it freely for locals; spell out types in interfaces (function
-   parameters, return types).
-   <br /><span class="ref">src/app/MainWindow.cpp:60,62,66</span></p>
+<p>The type is obvious from the right-hand side. <code>auto</code> shortens declarations and prevents
+   accidental implicit conversions. Use it freely for locals; spell out types in interfaces (function
+   parameters, return types).</p>
+<pre><code><span class="c">// src/app/MainWindow.cpp &mdash; auto for menu construction locals</span>
+auto *fileMenu        = menuBar()->addMenu(tr("&amp;File"));
+auto *openImageAction = fileMenu->addAction(tr("&amp;Open Image..."));
+auto *openVideoAction = fileMenu->addAction(tr("Open &amp;Video..."));</code></pre>
+<p><span class="ref">src/app/MainWindow.cpp:60,62,66</span></p>
 
 <h3 id="lambdas">Lambdas (captures, closures) <span class="badge">Step 2</span></h3>
 <p>A lambda is a C++ closure &mdash; an anonymous function object that can capture local variables. In Qt
-   code they're often the smallest path to a tiny slot:</p>
-<pre><code>connect(m_slider, &amp;QSlider::sliderPressed, this,
+   code they're often the smallest path to a tiny slot.</p>
+<pre><code><span class="c">// src/ui/VideoControls.cpp &mdash; minimal slot via lambda; captures `this` by pointer</span>
+connect(m_slider, &amp;QSlider::sliderPressed, this,
         [this]() { m_userIsDragging = true; });</code></pre>
 <p>The capture <code>[this]</code> grabs the pointer so the body can touch members. Captures by reference
    (<code>[&amp;]</code>) are risky in async contexts &mdash; if the referenced local goes out of scope
    before the lambda fires, you get a dangling reference. Capture by value (<code>[=]</code>) is safer when
    in doubt. See also <a href="#lambda-slot">Connecting to a lambda</a> for the Qt-specific context-object
    requirement.</p>
+<p><span class="ref">src/ui/VideoControls.cpp:40&ndash;41</span></p>
 
 <h3 id="member-init">In-class member initialisers <span class="badge">Step 2</span></h3>
-<p><code>quint64 m_frameCount{0};</code> and <code>qint64 m_duration{0};</code> in the headers give a member a
-   default value at the point of declaration. No need to repeat it in every constructor. The constructor's
-   init list can still override per instance if needed. Modern C++11 feature, used everywhere now.
-   <br /><span class="ref">src/media/VideoController.h:52</span> &middot; <span class="ref">src/ui/VideoControls.h:32&ndash;34</span></p>
+<p>Give a member a default value at the point of declaration. No need to repeat it in every constructor. The
+   constructor's init list can still override per instance if needed. Modern C++11 feature, used everywhere
+   now.</p>
+<pre><code><span class="c">// src/ui/VideoControls.h &mdash; default values via brace initialisers</span>
+private:
+    QPushButton *m_playPauseBtn;
+    QSlider     *m_slider;
+    QLabel      *m_timeLabel;
+    qint64       m_duration{0};
+    qint64       m_position{0};
+    bool         m_userIsDragging{false};
+
+<span class="c">// src/media/VideoController.h &mdash; same pattern for a diagnostic counter</span>
+private:
+    QMediaPlayer *m_player;
+    QVideoSink   *m_sink;
+    quint64       m_frameCount{0};</code></pre>
+<p><span class="ref">src/ui/VideoControls.h:38&ndash;43</span> &middot; <span class="ref">src/media/VideoController.h:66&ndash;68</span></p>
 
 <h3 id="qint64">Qt's fixed-width integer typedefs <span class="badge">Step 2</span></h3>
-<p><code>qint64</code> and <code>quint64</code> are Qt's portable signed/unsigned 64-bit integer types &mdash;
-   identical to <code>std::int64_t</code> / <code>std::uint64_t</code> on every supported platform.
-   <code>QMediaPlayer</code>'s API uses <code>qint64</code> for milliseconds, so we follow suit. Mixing
-   <code>int</code> with <code>qint64</code> is fine but generates implicit-conversion warnings under
-   <code>-Wconversion</code>; sticking to the Qt type keeps the chain consistent.</p>
+<p><code>qint64</code> and <code>quint64</code> are Qt's portable signed/unsigned 64-bit integer types
+   &mdash; identical to <code>std::int64_t</code> / <code>std::uint64_t</code> on every supported platform.
+   <code>QMediaPlayer</code>'s API uses <code>qint64</code> for milliseconds, so we follow suit.</p>
+<pre><code><span class="c">// src/media/VideoController.h &mdash; matches QMediaPlayer's own signatures</span>
+qint64 position() const;     <span class="c">// milliseconds</span>
+qint64 duration() const;     <span class="c">// milliseconds</span>
+
+public slots:
+    void seek(qint64 milliseconds);</code></pre>
+<p>Mixing <code>int</code> with <code>qint64</code> is fine but generates implicit-conversion warnings
+   under <code>-Wconversion</code>; sticking to the Qt type keeps the chain consistent.</p>
+<p><span class="ref">src/media/VideoController.h:35&ndash;44</span></p>
 
 <!-- =========================================================== -->
 <h2 id="pitfalls">12. Common pitfalls</h2>
@@ -441,20 +816,20 @@
 <div class="pitfall"><strong>Rescaling an already-scaled pixmap.</strong> <span class="badge">Step 1</span>
   Each scale-down loses information. If you scale on every resize starting from the previously-scaled pixmap,
   quality decays visibly. Always rescale from the original <code>QImage</code> (which is what
-  <code>ImageView::updateScaledPixmap()</code> does).</div>
+  <code>ImageView::updateScaledPixmap()</code> does &mdash; see <a href="#rescale-original">&sect;5</a>).</div>
 
 <div class="pitfall"><strong>Forgetting <code>Qt::KeepAspectRatio</code>.</strong> <span class="badge">Step 1</span>
-  The default is <code>Qt::IgnoreAspectRatio</code>, which stretches the image to fill the target. Easy mistake;
-  obvious bug.</div>
+  The default is <code>Qt::IgnoreAspectRatio</code>, which stretches the image to fill the target. Easy
+  mistake; obvious bug.</div>
 
 <div class="pitfall"><strong>Double-parenting.</strong> <span class="badge">Step 1</span>
-  Passing a widget to a layout (<code>layout-&gt;addWidget(child)</code>) reparents it to the layout's owning
-  widget. If you also passed a parent to its constructor, the new parent overrides &mdash; usually harmless,
-  but worth knowing when debugging "why is this widget appearing nowhere?".</div>
+  Passing a widget to a layout (<code>layout-&gt;addWidget(child)</code>) reparents it to the layout's
+  owning widget. If you also passed a parent to its constructor, the new parent overrides &mdash; usually
+  harmless, but worth knowing when debugging "why is this widget appearing nowhere?".</div>
 
 <div class="pitfall"><strong>Mixing <code>std::unique_ptr</code> with Qt parent ownership.</strong> <span class="badge">Step 1</span>
-  If a <code>QObject</code> has a parent <em>and</em> sits inside a <code>unique_ptr</code>, both will try to
-  delete it. Pick one ownership model per object.</div>
+  If a <code>QObject</code> has a parent <em>and</em> sits inside a <code>unique_ptr</code>, both will try
+  to delete it. Pick one ownership model per object.</div>
 
 <div class="pitfall"><strong>Qt plugin not loaded &mdash; silent no-op.</strong> <span class="badge">Step 2</span>
   When <code>QMediaPlayer::play()</code> does nothing and there's no error, the cause is almost always the
@@ -469,14 +844,15 @@
 
 <div class="pitfall"><strong>Mixing Qt installs by accident.</strong> <span class="badge">Step 2</span>
   If something (Qt Creator's deploy step, a stray <code>windeployqt</code> run) copies <code>Qt6Core.dll</code>
-  next to your .exe, Windows' DLL loader will pick <em>that</em> over anything on PATH because the application
-  directory comes first in the search order. If the deployed copy is from a different Qt version than the rest
-  of your environment, you get ABI-level confusion that's invisible until something fails strangely.</div>
+  next to your .exe, Windows' DLL loader will pick <em>that</em> over anything on PATH because the
+  application directory comes first in the search order. If the deployed copy is from a different Qt version
+  than the rest of your environment, you get ABI-level confusion that's invisible until something fails
+  strangely.</div>
 
 <div class="pitfall"><strong>Slider fighting the user's finger.</strong> <span class="badge">Step 2</span>
-  Calling <code>QSlider::setValue()</code> from a position-update signal while the user is dragging makes the
-  thumb jump. Always interlock with a "user is dragging" flag (pressed/released) and emit a single seek on
-  release. See <a href="#drag-interlock">drag/update interlock</a>.</div>
+  Calling <code>QSlider::setValue()</code> from a position-update signal while the user is dragging makes
+  the thumb jump. Always interlock with a "user is dragging" flag (pressed/released) and emit a single seek
+  on release. See <a href="#drag-interlock">drag/update interlock</a>.</div>
 
 <div class="pitfall"><strong>Lambda <code>connect()</code> without a context object.</strong> <span class="badge">Step 2</span>
   <code>connect(sig, []() { /* uses captured this */ });</code> compiles and runs, but the connection lives
@@ -484,7 +860,10 @@
   argument so Qt automatically disconnects when the context object dies.</div>
 
 <hr />
-<p class="subtitle">Concepts captured during construction of <a href="index.html">InferenceVisualizer</a>. New entries are added per roadmap step under the appropriate topic; pre-existing topics gain refinements as patterns repeat.</p>
+<p class="subtitle">Concepts captured during construction of <a href="index.html">InferenceVisualizer</a>.
+   New entries are added per roadmap step under the appropriate topic; pre-existing topics gain refinements
+   as patterns repeat. After any source change, refresh the snippets in entries that reference the modified
+   file &mdash; each snippet's first line names its source file.</p>
 
 </main>
 </body>
