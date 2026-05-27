@@ -2,7 +2,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Debug Qt Application (GDB/MinGW)",
+            "name": "Debug Qt Application (GDB/MinGW, Windows)",
             "type": "cppdbg",
             "request": "launch",
             "program": "${command:cmake.launchTargetPath}",
@@ -30,6 +30,39 @@
             ],
             "MIMode": "gdb",
             "miDebuggerPath": "C:\\Qt\\Tools\\mingw1310_64\\bin\\gdb.exe",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
+            "name": "Debug Qt Application (GDB, Linux)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${command:cmake.launchTargetPath}",
+            "args": [],
+            "stopAtEntry": false,
+            "preLaunchTask": "CMake: build",
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "LD_LIBRARY_PATH",
+                    "value": "${env:HOME}/onnxruntime/lib:${env:LD_LIBRARY_PATH}"
+                },
+                {
+                    "name": "QT_MEDIA_BACKEND",
+                    "value": "ffmpeg"
+                },
+                {
+                    "name": "QT_LOGGING_RULES",
+                    "value": "qt.multimedia.*=true"
+                }
+            ],
+            "MIMode": "gdb",
+            "miDebuggerPath": "/usr/bin/gdb",
             "setupCommands": [
                 {
                     "description": "Enable pretty-printing for gdb",

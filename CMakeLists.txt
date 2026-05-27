@@ -18,11 +18,19 @@ find_package(Qt6 6.5 REQUIRED COMPONENTS Widgets Multimedia)
 qt_standard_project_setup()
 
 # --- ONNX Runtime (Step 3) ------------------------------------------------
-# Microsoft ships a prebuilt CPU package as a zip. Extract it somewhere stable
-# and either keep the default path below or override it on the command line:
-#   cmake -DONNXRUNTIME_DIR=D:/whatever ...
-set(ONNXRUNTIME_DIR "C:/Tools/onnxruntime" CACHE PATH
-    "Root of the extracted onnxruntime-win-x64-*.zip (must contain include/ and lib/)")
+# Microsoft ships prebuilt CPU packages as zip/tgz. Extract them somewhere
+# stable. The defaults differ per OS; override with -DONNXRUNTIME_DIR=... on
+# the configure line if you put it elsewhere.
+if(WIN32)
+    set(ONNXRUNTIME_DIR_DEFAULT "C:/Tools/onnxruntime"
+        CACHE INTERNAL "")
+else()
+    # Linux / macOS: $HOME/onnxruntime (no root needed, gitignored).
+    set(ONNXRUNTIME_DIR_DEFAULT "$ENV{HOME}/onnxruntime"
+        CACHE INTERNAL "")
+endif()
+set(ONNXRUNTIME_DIR "${ONNXRUNTIME_DIR_DEFAULT}" CACHE PATH
+    "Root of the extracted onnxruntime-*-x64-*.zip/tgz (must contain include/ and lib/)")
 
 find_library(ONNXRUNTIME_LIB onnxruntime
     PATHS "${ONNXRUNTIME_DIR}/lib"
