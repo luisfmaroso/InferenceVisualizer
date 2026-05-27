@@ -88,3 +88,12 @@ Desktop.ini
 *~
 *.bak
 *.orig
+
+# --- Added in step 3 -----------------------------------------------------
+
+# Trained ONNX models can be hundreds of MB; git is the wrong place for them.
+models/
+
+# A copy of onnxruntime.dll lands next to the .exe via a CMake post-build step;
+# build/ is already ignored so this is just defensive.
+onnxruntime.dll

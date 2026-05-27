@@ -9,7 +9,7 @@
 <main>
 
 <h1>InferenceVisualizer</h1>
-<p class="subtitle">How the project is built. For the Qt and modern-C++ knowledge captured along the way, see <a href="concepts.html">Qt &amp; C++ concepts</a>. Current step: <strong>Step 2 &mdash; video playback &amp; dual-pane layout</strong>.</p>
+<p class="subtitle">How the project is built. For the Qt and modern-C++ knowledge captured along the way, see <a href="concepts.html">Qt &amp; C++ concepts</a>. Current step: <strong>Step 3 &mdash; ONNX inference with segmentation overlay</strong>.</p>
 
 <nav class="docnav">
   <span class="current">Project doc</span>
@@ -17,7 +17,7 @@
   <a href="concepts.html">Qt &amp; C++ concepts &rarr;</a>
 </nav>
 
-<p class="subtitle"><strong>Snippets last verified against:</strong> Step 2. When code changes in a future step, refresh snippets in any §5 entry referencing the modified file &mdash; each snippet's first line names its source.</p>
+<p class="subtitle"><strong>Snippets last verified against:</strong> Step 3 + YOLOv8 retrofit (written but unbuilt). When code changes in a future step, refresh snippets in any §5 entry referencing the modified file &mdash; each snippet's first line names its source.</p>
 
 <nav class="toc">
   <strong>Contents</strong>
@@ -43,13 +43,19 @@
   companion doc.
 </p>
 
-<h2 id="step">2. Current step <span class="badge">Step 2 / 6</span></h2>
-<p>Step 2 adds video. The central widget is now a dual-pane <code>QSplitter</code>; the right pane
-   mirrors the left until Step 3 routes it through inference. A <code>VideoController</code> hides
-   <code>QMediaPlayer</code> behind a small façade (see <a href="concepts.html#facade-pattern">controller as
-   façade</a>), a <code>VideoControls</code> widget gives play/pause + scrub, and the File menu gains
-   <em>Open Video&hellip;</em>. Frames flow as <code>QImage</code> so later steps can hand them to an inference
-   backend without changing the pipeline.</p>
+<h2 id="step">2. Current step <span class="badge">Step 3 / 4</span></h2>
+<p>Step 3 introduces the inference pipeline. New <code>IInferenceBackend</code> interface lives in
+   <code>src/inference/</code>; <code>OnnxSegmentationBackend</code> implements it on top of a shared
+   <code>OnnxRunner</code> (Microsoft's prebuilt ONNX Runtime). A new
+   <code>InferenceController</code> in <code>src/app/</code> orchestrates: receives <code>QImage</code> from
+   <code>VideoController</code>, dispatches to the backend, emits a processed image (mask composited over the
+   original with <code>QPainter</code>) for the right pane. New <em>Inference</em> menu adds <em>Load Model</em>,
+   <em>Run Inference</em> toggle, and a <em>Mask Opacity</em> submenu.</p>
+<p><strong>Roadmap restructured.</strong> The original Steps 3 (YOLO), 4 (UNet), and 5 (ONNX Runtime backend)
+   collapse into this one step. The user's master's-thesis segmentation model (and any future YOLO models)
+   are all converted to ONNX, so the project only needs one runtime &mdash; ORT &mdash; and one generic
+   interface that subsequent model types plug into. After Step 3 ships, the only remaining roadmap item is
+   what used to be Step 6: polish (threading, drag-and-drop, FPS, recording).</p>
 
 <h2 id="tree">3. Folder structure</h2>
 <div class="tree">InferenceVisualizer/
@@ -57,9 +63,17 @@
 &#9500;&#9472;&#9472; src/
 &#9474;   &#9500;&#9472;&#9472; CMakeLists.txt          <span class="cm"># declares the executable target + its sources</span>
 &#9474;   &#9500;&#9472;&#9472; main.cpp                <span class="cm"># entry point + qInstallMessageHandler</span>
-&#9474;   &#9500;&#9472;&#9472; app/                    <span class="cm"># application glue: windows, controllers (later)</span>
+&#9474;   &#9500;&#9472;&#9472; app/                    <span class="cm"># application glue: windows, controllers</span>
 &#9474;   &#9474;   &#9500;&#9472;&#9472; MainWindow.h
-&#9474;   &#9474;   &#9492;&#9472;&#9472; MainWindow.cpp
+&#9474;   &#9474;   &#9500;&#9472;&#9472; MainWindow.cpp
+&#9474;   &#9474;   &#9500;&#9472;&#9472; InferenceController.h   <span class="cm"># Step 3: orchestrates backend, emits processed frames</span>
+&#9474;   &#9474;   &#9492;&#9472;&#9472; InferenceController.cpp
+&#9474;   &#9500;&#9472;&#9472; inference/              <span class="cm"># Step 3: inference engine</span>
+&#9474;   &#9474;   &#9500;&#9472;&#9472; IInferenceBackend.h     <span class="cm"># abstract interface; any backend implements this</span>
+&#9474;   &#9474;   &#9500;&#9472;&#9472; OnnxRunner.h           <span class="cm"># thin RAII wrapper around Ort::Session</span>
+&#9474;   &#9474;   &#9500;&#9472;&#9472; OnnxRunner.cpp
+&#9474;   &#9474;   &#9500;&#9472;&#9472; OnnxSegmentationBackend.h   <span class="cm"># IInferenceBackend impl for segmentation</span>
+&#9474;   &#9474;   &#9492;&#9472;&#9472; OnnxSegmentationBackend.cpp
 &#9474;   &#9500;&#9472;&#9472; media/                  <span class="cm"># Step 2: video decode/playback engine</span>
 &#9474;   &#9474;   &#9500;&#9472;&#9472; VideoController.h
 &#9474;   &#9474;   &#9492;&#9472;&#9472; VideoController.cpp
@@ -72,14 +86,13 @@
 &#9474;   &#9500;&#9472;&#9472; index.html              <span class="cm"># this project doc</span>
 &#9474;   &#9500;&#9472;&#9472; concepts.html           <span class="cm"># Qt &amp; C++ tutorial drawn from the project</span>
 &#9474;   &#9492;&#9472;&#9472; style.css               <span class="cm"># shared stylesheet</span>
+&#9500;&#9472;&#9472; models/                     <span class="cm"># Step 3: .onnx files (gitignored, large binaries)</span>
+&#9500;&#9472;&#9472; SETUP_TOMORROW.md           <span class="cm"># Step 3 prerequisites checklist</span>
 &#9500;&#9472;&#9472; .vscode/
 &#9474;   &#9492;&#9472;&#9472; launch.json             <span class="cm"># VS Code debug profile (MinGW GDB)</span>
 &#9492;&#9472;&#9472; build/                      <span class="cm"># CMake build tree (regenerable, can be deleted)</span></div>
 
-<p>One more folder is planned:</p>
-<ul>
-  <li><code>src/inference/</code> &mdash; the inference backends (YOLO, UNet, ONNX), added in Step 3.</li>
-</ul>
+<p>All planned subdirectories now exist. Further roadmap work is polish, not new modules.</p>
 
 <h2 id="what">4. What was implemented</h2>
 
@@ -103,6 +116,20 @@
   <li>A file-based <a href="concepts.html#message-handler">qInstallMessageHandler</a> in <code>main.cpp</code> that mirrors all <code>qDebug</code>/<code>qWarning</code>/<code>qCritical</code> output to <code>inference-visualizer.log</code> next to the .exe &mdash; essential because Qt GUI apps on Windows route output through <code>OutputDebugString</code>, which VS Code's debug console doesn't show.</li>
   <li>CMake now finds and links <code>Qt6::Multimedia</code> in addition to <code>Qt6::Widgets</code>.</li>
   <li>A proper <code>.gitignore</code> finally added to keep <code>build/</code> out of the repo.</li>
+</ul>
+
+<h3>Step 3</h3>
+<ul>
+  <li>New <code>IInferenceBackend</code> pure-virtual interface in <code>src/inference/</code>. Any backend (segmentation, detection, future model types) implements its four methods: <code>loadModel</code>, <code>isReady</code>, <code>infer(QImage)</code>, <code>setOverlayOpacity</code>. (See <a href="concepts.html#iinferencebackend">IInferenceBackend</a>.)</li>
+  <li><code>OnnxRunner</code> &mdash; thin RAII wrapper around <code>Ort::Env</code> + <code>Ort::Session</code>. PIMPL'd so the ONNX Runtime C++ header only fans out to one .cpp. Loads an <code>.onnx</code> by path (UTF-8 → wchar_t on Windows), discovers input/output names from the graph, runs a single float tensor through. Shared by any future ONNX backend. (See <a href="concepts.html#onnxrunner">OnnxRunner</a>.)</li>
+  <li><code>OnnxSegmentationBackend</code> implements <code>IInferenceBackend</code> for semantic-segmentation models. Resizes <code>QImage</code> to model input size, builds an <code>NCHW</code> float buffer with ImageNet normalization, runs through <code>OnnxRunner</code>, argmaxes the output over the channel axis, builds a colored class mask, composites it onto a copy of the original with <code>QPainter</code>. Per-class colors and visibility are configurable; defaults match a 2-class corrosion model (not-critical = dim yellow, critical = bold red). (See <a href="concepts.html#segmentation-backend">OnnxSegmentationBackend</a>, <a href="concepts.html#qpainter-overlay">QPainter overlays</a>.)</li>
+  <li><code>InferenceController</code> in <code>src/app/</code>: <code>QObject</code> orchestrator. Owns the backend via <code>std::unique_ptr&lt;IInferenceBackend&gt;</code>. Receives <code>QImage</code> frames, runs inference if enabled, emits <code>processedFrameReady</code>. Passthrough when disabled — keeps the dual-pane mirroring working without code branches in <code>MainWindow</code>. (See <a href="concepts.html#inference-controller">InferenceController</a>.)</li>
+  <li>New <em>Inference</em> menu in <code>MainWindow</code>: <em>Load Model&hellip;</em> (Ctrl+M), <em>Run Inference</em> toggle (Ctrl+R, disabled until a model loads), <em>Mask Opacity</em> submenu (25 / 50 / 75% presets).</li>
+  <li>Right-pane wiring rewritten: instead of two direct <code>connect(frameReady, ImageView::setImage)</code> calls, the right pane now goes through <code>InferenceController</code>. Step 2's "both panes mirror" behavior is preserved by the controller emitting passthrough when inference is off.</li>
+  <li>CMake now finds and links the prebuilt <strong>ONNX Runtime</strong> (Microsoft's `onnxruntime-win-x64` zip; user installs to <code>C:\Tools\onnxruntime</code>). A post-build step copies <code>onnxruntime.dll</code> next to the executable so Windows finds it at launch.</li>
+  <li><code>.gitignore</code> excludes <code>models/</code> (trained .onnx files can be hundreds of MB).</li>
+  <li>New top-level <code>SETUP_TOMORROW.md</code> walks the user through ONNX Runtime download, Netron model inspection, and the one-off <code>.pth → .onnx</code> Python conversion.</li>
+  <li><em>Threading limitation</em> documented: inference runs on the GUI thread. Images work instantly; video hitches per frame. Step 4 (formerly Step 6) targets a worker-thread inference setup.</li>
 </ul>
 
 <h2 id="why">5. Why it was implemented this way</h2>
@@ -299,7 +326,181 @@ connect(m_controller, &amp;VideoController::frameReady,
    gives a project reader a much shorter doc, and a Qt learner a real topic-organized tutorial. The shared
    <code>style.css</code> keeps the look uniform.</p>
 
-<h3>5.9 Inline code snippets in both docs</h3>
+<h3>5.10 Why <code>IInferenceBackend</code> as an interface with one implementation</h3>
+<p>Step 3 ships a single backend (segmentation). Why an interface at all?</p>
+<ul>
+  <li><strong>The right place for backend-specific logic.</strong> Mask compositing is segmentation-specific
+      &mdash; box drawing would be detection-specific. Both should live in the backend that <em>knows</em>
+      what its output means. <code>InferenceController</code> stays generic; it doesn't grow a giant if/else
+      when a second backend lands.</li>
+  <li><strong>Cheap to add now, expensive later.</strong> Once <code>MainWindow</code> grows to call
+      <code>backend-&gt;runSegmentation()</code> directly, retrofitting the interface means touching every
+      call site. One file of overhead today vs. a refactor across three files tomorrow.</li>
+</ul>
+<pre><code><span class="c">// src/inference/IInferenceBackend.h &mdash; the contract every backend satisfies</span>
+class IInferenceBackend
+{
+public:
+    virtual ~IInferenceBackend() = default;
+
+    virtual bool    loadModel(const QString &amp;path) = 0;
+    virtual bool    isReady() const = 0;
+    virtual QString errorString() const = 0;
+    virtual QImage  infer(const QImage &amp;input) = 0;
+    virtual void    setOverlayOpacity(double opacity) = 0;
+};</code></pre>
+
+<h3>5.11 Why mask compositing lives in the backend, not the controller</h3>
+<p>One way to design this would be: backend returns a class-id mask, controller paints colors. We don't
+   do that. The backend returns a <em>fully-composited</em> <code>QImage</code> ready to display. Reason:
+   different backends produce different overlay shapes &mdash; segmentation paints masks, detection draws
+   boxes, classification draws a label corner. If the controller knew how to render any of them, it would
+   need a discriminated union of result types and a switch over kinds. By making "render to a
+   <code>QImage</code>" part of the backend's contract, the controller stays one signal in, one signal
+   out, regardless of which model is loaded.</p>
+<pre><code><span class="c">// src/inference/OnnxSegmentationBackend.cpp &mdash; backend does the QPainter composite itself</span>
+QImage OnnxSegmentationBackend::compositeOverlay(
+    const QImage &amp;original,
+    const QImage &amp;mask) const
+{
+    QImage result = original.convertToFormat(QImage::Format_ARGB32);
+
+    QPainter painter(&amp;result);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, false);
+    painter.setOpacity(m_opacity);
+    painter.drawImage(0, 0, mask);
+    painter.end();
+
+    return result;
+}</code></pre>
+
+<h3>5.12 Why <code>OnnxRunner</code> is a separate helper class</h3>
+<p>Loading a <code>.onnx</code>, managing the <code>Ort::Env</code> + <code>Ort::Session</code> lifetime, the
+   Windows-specific wchar_t path conversion, the input/output name discovery, the float-tensor packing for
+   <code>Ort::Value</code> &mdash; all of that is identical for every ONNX-based backend. Putting it inside
+   <code>OnnxSegmentationBackend</code> would be fine today; tomorrow, when an <code>OnnxDetectionBackend</code>
+   lands, we'd either duplicate the code or extract it then. Doing the extraction now means the second
+   backend only writes its own pre/post-processing, not 60 lines of ORT plumbing again.</p>
+<pre><code><span class="c">// src/inference/OnnxSegmentationBackend.h &mdash; backend owns a runner, isn't one</span>
+class OnnxSegmentationBackend : public IInferenceBackend
+{
+    <span class="c">// ...</span>
+private:
+    Config                       m_cfg;
+    std::unique_ptr&lt;OnnxRunner&gt;  m_runner;       <span class="c">// future detection backend reuses the same class</span>
+    std::vector&lt;float&gt;           m_inputBuffer;  <span class="c">// reused across frames to avoid alloc churn</span>
+    QString                      m_lastError;
+    double                       m_opacity = 0.5;
+};</code></pre>
+
+<h3>5.13 Why <code>InferenceController</code> passes through when disabled</h3>
+<p>The simpler-sounding design is: <code>MainWindow</code> connects <code>frameReady</code> to the right
+   pane <em>or</em> to the inference pipeline, depending on the toggle, and reconnects on every flip. That
+   means signal connections change at runtime, which is ugly and bug-prone.</p>
+<p>The actual design is: <code>InferenceController</code> always receives every frame and always emits a
+   processed frame &mdash; but when disabled, the emitted frame is the input unchanged. <code>MainWindow</code>
+   wires once; the toggle just flips a boolean inside the controller. As a bonus, the right pane keeps
+   mirroring the left exactly the way Step 2 set it up.</p>
+
+<h3>5.14 FIFO + backpressure for video (process every frame)</h3>
+<p>Inference at 100&ndash;3000 ms per frame on the GUI thread is much slower than 33 ms (30 FPS). Two ways
+   to bound the resulting backlog:</p>
+<ul>
+  <li><strong>Drop intermediate frames</strong> &mdash; one-slot buffer, each new frame replaces the old.
+      Right when you only care about "the most recent" (real-time monitoring).</li>
+  <li><strong>FIFO + backpressure to the source</strong> &mdash; queue every frame in order, pause the
+      producer when the queue grows past a high watermark, resume when it drains. Right when you can't
+      afford to lose any frame (batch/offline inference, what the user actually wants).</li>
+</ul>
+<p>We picked option two. <code>InferenceController</code> appends each frame to a FIFO, signals
+   <code>wantsSourcePaused(true)</code> when the queue passes a high watermark, processes frames one at a
+   time via <code>Qt::QueuedConnection</code> self-reinvocation (so paint events for the original pane can
+   fire between inferences), and signals <code>wantsSourcePaused(false)</code> when the queue drains.</p>
+<pre><code><span class="c">// src/app/InferenceController.cpp &mdash; FIFO + backpressure</span>
+void InferenceController::processFrame(const QImage &amp;input)
+{
+    if (!m_enabled || !isReady() || input.isNull()) {
+        emit processedFrameReady(input);
+        return;
+    }
+    m_frameQueue.enqueue(input);            <span class="c">// every frame preserved</span>
+    if (!m_backpressured &amp;&amp; m_frameQueue.size() &gt;= m_highWatermark) {
+        m_backpressured = true;
+        emit wantsSourcePaused(true);       <span class="c">// MainWindow pauses the video</span>
+    }
+    if (!m_busy) {
+        m_busy = true;
+        QMetaObject::invokeMethod(this,
+            &amp;InferenceController::runNextQueuedFrame,
+            Qt::QueuedConnection);
+    }
+}
+
+void InferenceController::runNextQueuedFrame()
+{
+    if (m_frameQueue.isEmpty() || !isReady() || !m_enabled) {
+        m_busy = false;
+        if (m_backpressured) {
+            m_backpressured = false;
+            emit wantsSourcePaused(false);
+        }
+        return;
+    }
+    QImage frame = m_frameQueue.dequeue();
+    QImage result = m_backend-&gt;infer(frame);
+    emit processedFrameReady(result.isNull() ? frame : result);
+
+    if (m_backpressured &amp;&amp; m_frameQueue.size() &lt;= m_lowWatermark) {
+        m_backpressured = false;
+        emit wantsSourcePaused(false);
+    }
+
+    if (!m_frameQueue.isEmpty()) {
+        QMetaObject::invokeMethod(this,
+            &amp;InferenceController::runNextQueuedFrame,
+            Qt::QueuedConnection);          <span class="c">// re-queue, NOT tight-loop</span>
+    } else {
+        m_busy = false;
+    }
+}</code></pre>
+<pre><code><span class="c">// src/app/MainWindow.cpp &mdash; forward backpressure to the video player</span>
+void MainWindow::onInferenceWantsSourcePaused(bool paused)
+{
+    if (paused) {
+        if (m_controller-&gt;playbackState() == QMediaPlayer::PlayingState) {
+            m_controller-&gt;pause();
+            m_pausedByBackpressure = true;
+        }
+    } else {
+        if (m_pausedByBackpressure) {       <span class="c">// only resume what WE paused</span>
+            m_pausedByBackpressure = false;
+            m_controller-&gt;play();
+        }
+    }
+}</code></pre>
+<p>User experience with slow CPU inference: the video plays in bursts &mdash; decode a couple frames, queue
+   fills, pause, inference grinds, resume. Every frame in the source video appears on the processed pane in
+   native order. Memory stays bounded at the high watermark. The <code>m_pausedByBackpressure</code> flag
+   distinguishes "we paused" from "user paused" so user pauses are never auto-resumed.</p>
+<p>The real fix for slow video is Step 4 worker-thread inference; the FIFO + backpressure shape is still
+   correct for that, with the inference happening off-thread.</p>
+
+<h3>5.15 Why ORT initialization is constructor-time, not per-frame</h3>
+<p><code>Ort::Env</code> creation is heavy (several ms), and the session itself loads model weights into
+   memory once and reuses them. We construct both once when <code>InferenceController</code> is built and
+   keep them alive until the controller dies. Per-frame work is just <code>Session::Run</code> with a fresh
+   tensor view. Putting any of this in the per-frame path would multiply latency by 10&times;.</p>
+<pre><code><span class="c">// src/inference/OnnxRunner.cpp &mdash; Env + SessionOptions live for the runner's lifetime</span>
+struct OnnxRunner::Impl {
+    Ort::Env                          env{ORT_LOGGING_LEVEL_WARNING,
+                                          "InferenceVisualizer"};
+    Ort::SessionOptions               options;
+    std::unique_ptr&lt;Ort::Session&gt;     session;    <span class="c">// created once, in loadModel()</span>
+    Ort::AllocatorWithDefaultOptions  allocator;
+    std::vector&lt;Ort::Value&gt;           lastOutputs;
+};</code></pre>
+
+<h3>5.16 Inline code snippets in both docs</h3>
 <p>Every architectural decision in this file's &sect;5 and every code-shaped concept in
    <a href="concepts.html">concepts.html</a> now carries an actual code snippet pulled from the project
    &mdash; not just a <code>src/file:line</code> pointer. Reading either doc without the code in front of
@@ -359,11 +560,12 @@ C:\Projects\InferenceVisualizer\build\cli\bin\InferenceVisualizer.exe</code></pr
 <h2 id="future">7. Future improvements</h2>
 <ul>
   <li><del><strong>Step 2:</strong> dual-pane <code>QSplitter</code>, video pipeline, play/pause controls.</del> &mdash; landed.</li>
-  <li><strong>Step 3:</strong> YOLO inference backend behind an <code>IInferenceBackend</code> interface; the existing <code>VideoController::frameReady</code> fork point is where inference will plug in.</li>
-  <li><strong>Step 4:</strong> UNet segmentation backend; opacity slider for mask overlay.</li>
-  <li><strong>Step 5:</strong> ONNX Runtime as a generic backend &mdash; model URL / file is enough to wire in a new model.</li>
-  <li><strong>Step 6 (future):</strong> worker-thread inference (<code>QueuedConnection</code> across threads), GPU execution providers, drag-and-drop file open, recent-files menu, FPS counter overlay, output-video recording, settings dialog, plugin discovery for models.</li>
-  <li><strong>Polish backlog</strong> (not blocking any step): audio output (<code>QAudioOutput</code>) for video, volume slider, frame-step buttons, fullscreen toggle, restore last-used directory in file dialogs.</li>
+  <li><del><strong>Step 3:</strong> YOLO inference backend.</del> Replaced by the unified ONNX Runtime backend (still Step 3) since the user converts all models to ONNX.</li>
+  <li><del><strong>Step 4:</strong> UNet segmentation backend.</del> Absorbed into Step 3; <code>OnnxSegmentationBackend</code> handles the corrosion model.</li>
+  <li><del><strong>Step 5:</strong> ONNX Runtime as a generic backend.</del> Done in Step 3 (<code>OnnxRunner</code>).</li>
+  <li><strong>Step 4 (formerly Step 6) &mdash; polish:</strong> worker-thread inference (<code>QueuedConnection</code> across threads, drop frames when behind), GPU execution providers, drag-and-drop file open, recent-files menu, FPS counter overlay, output-video recording, settings dialog, plugin discovery for models.</li>
+  <li><strong>Polish backlog</strong> (not blocking any step): audio output (<code>QAudioOutput</code>) for video, volume slider, frame-step buttons, fullscreen toggle, restore last-used directory in file dialogs, class-toggle UI to hide "not-critical" so the eye snaps to critical regions, letterbox preprocessing (preserve input aspect ratio; current stretch-to-fit slightly degrades accuracy on non-square images).</li>
+  <li><strong>Generic any-ONNX-model loader</strong> (user request): the current <code>OnnxSegmentationBackend</code> is hard-coded for YOLOv8 instance-segmentation format. A pure semantic-segmentation model (UNet, DeepLab; output <code>[1, C, H, W]</code>) or a pure detection model (YOLO without seg) would need a different backend. Future work: inspect the loaded model's output shapes and auto-pick the right backend (one per architecture family). Probably means splitting the current file into <code>OnnxYoloSegBackend</code>, <code>OnnxSemanticSegBackend</code>, <code>OnnxDetectionBackend</code> and adding a small "router" in <code>InferenceController</code>.</li>
 </ul>
 
 <h2 id="changelog">8. Changelog</h2>
@@ -373,6 +575,9 @@ C:\Projects\InferenceVisualizer\build\cli\bin\InferenceVisualizer.exe</code></pr
   <li><strong>2026-05-19 &mdash; Docs split.</strong> Separated the single learning log into a project doc (this file) and a topic-organized Qt &amp; C++ concepts tutorial (<a href="concepts.html">concepts.html</a>). Extracted shared CSS into <code>docs/style.css</code>.</li>
   <li><strong>2026-05-19 &mdash; Inline snippets in concepts doc.</strong> Every code-shaped entry in <code>concepts.html</code> now carries an actual snippet from the project with a source-file caption on its first line. <code>src/file:line</code> pointers remain as "jump to full context" refs below each snippet. Added a "Snippets last verified against: Step N" stamp near the top.</li>
   <li><strong>2026-05-19 &mdash; Inline snippets in project doc too.</strong> Each architectural decision in &sect;5 now carries the code it embodies. Same format and caption convention as <code>concepts.html</code>, same "Snippets last verified" stamp near the top. Per-step snippet-refresh discipline applies to both files: grep for the modified source path in <em>both</em> HTML files, refresh every match, bump both stamps.</li>
+  <li><strong>2026-05-19 &mdash; Step 3 + roadmap restructure.</strong> Inference pipeline landed: <code>IInferenceBackend</code> interface (<code>src/inference/IInferenceBackend.h</code>), shared <code>OnnxRunner</code> (RAII over <code>Ort::Env</code> + <code>Ort::Session</code>, PIMPL'd), <code>OnnxSegmentationBackend</code>, <code>InferenceController</code> (passthrough-when-disabled orchestrator). New <em>Inference</em> menu in <code>MainWindow</code>: <em>Load Model</em> (Ctrl+M), <em>Run Inference</em> toggle (Ctrl+R), <em>Mask Opacity</em> presets. Right pane rewired to go through <code>InferenceController</code> instead of directly from <code>VideoController</code>. CMake gains ONNX Runtime via prebuilt zip from Microsoft (extracted to <code>C:\Tools\onnxruntime</code>); post-build step copies <code>onnxruntime.dll</code> next to the .exe. <code>.gitignore</code> excludes <code>models/</code>. <code>.vscode/launch.json</code> adds the ORT lib dir to the debug-launch PATH. <strong>Roadmap restructured</strong>: original Steps 3 (YOLO), 4 (UNet), 5 (ONNX backend) collapse into this single Step 3 since the user converts every model to ONNX. What was Step 6 (polish) becomes the new Step 4. Threading limitation explicit: inference runs on GUI thread; videos hitch &mdash; Step 4 (polish) target.</li>
+  <li><strong>2026-05-19 &mdash; Hardcoded model auto-load.</strong> <code>MainWindow::tryAutoLoadModel()</code> runs at construction-time and loads <code>model_tcc.onnx</code> from the same directory as the executable (<code>QApplication::applicationDirPath()</code>). If found, the Run Inference action is auto-toggled on so the user gets results on the first frame. If absent, status bar reports and the menu stays available for manual selection. No CLI args supported.</li>
+  <li><strong>2026-05-19 &mdash; YOLOv8 segmentation retrofit.</strong> Netron inspection revealed the user's converted model is YOLOv8 instance-segmentation, not pure semantic-segmentation: inputs <code>images: float32[1,3,640,640]</code>; outputs <code>output0: float32[1,38,8400]</code> (4 box + 2 classes + 32 mask coeffs over 8400 anchors) and <code>output1: float32[1,32,160,160]</code> (mask prototypes). <code>OnnxRunner</code> refactored to support multi-output models (singular <code>inputName</code>/<code>outputName</code> → vector <code>inputNames</code>/<code>outputNames</code>; <code>run()</code> returns <code>std::vector&lt;TensorView&gt;</code>). <code>OnnxSegmentationBackend</code> post-processing entirely rewritten: confidence filter + class-aware NMS over candidate detections + per-surviving-detection mask via <code>sigmoid(coeffs &middot; prototypes)</code> + nearest-neighbour paint inside bbox at display resolution. Default Config now matches YOLO conventions: <code>640&times;640</code> input, no normalization (raw <code>[0, 1]</code> floats), confidence 0.25, NMS IoU 0.7, mask threshold 0.5. Class colors unchanged (not-critical = dim yellow, critical = bold red). Added "generic any-ONNX-model loader" to future improvements per user request.</li>
 </ul>
 
 <hr />

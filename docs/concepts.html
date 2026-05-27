@@ -17,7 +17,7 @@
   <span class="current">Qt &amp; C++ concepts</span>
 </nav>
 
-<p class="subtitle"><strong>Snippets last verified against:</strong> Step 2. When code changes in a future step, refresh the snippets that touch the modified files &mdash; each snippet has its source path as a comment on the first line, so a quick search for the file path finds every place to update.</p>
+<p class="subtitle"><strong>Snippets last verified against:</strong> Step 3 + YOLOv8 retrofit (written but unbuilt). When code changes in a future step, refresh the snippets that touch the modified files &mdash; each snippet has its source path as a comment on the first line, so a quick search for the file path finds every place to update.</p>
 
 <nav class="toc">
   <strong>Contents</strong>
@@ -33,6 +33,8 @@
     <li><a href="#deployment">Deployment &amp; runtime on Windows</a></li>
     <li><a href="#logging">Diagnostics &amp; logging</a></li>
     <li><a href="#cpp">Modern C++ patterns</a></li>
+    <li><a href="#inference">Inference pipeline</a></li>
+    <li><a href="#overlays">Image overlays with QPainter</a></li>
     <li><a href="#pitfalls">Common pitfalls</a></li>
   </ol>
 </nav>
@@ -801,8 +803,462 @@ public slots:
    under <code>-Wconversion</code>; sticking to the Qt type keeps the chain consistent.</p>
 <p><span class="ref">src/media/VideoController.h:35&ndash;44</span></p>
 
+<h3 id="pure-virtual">Pure virtual functions &amp; abstract interfaces <span class="badge">Step 3</span></h3>
+<p>A <em>pure virtual</em> function is declared with <code>= 0</code>. A class with at least one pure virtual
+   is <em>abstract</em>: you can't instantiate it directly; only subclasses that override every pure virtual
+   become concrete. This is C++'s way of expressing "interface" &mdash; same role as <code>interface</code>
+   in Java or <code>protocol</code> in Swift.</p>
+<pre><code><span class="c">// src/inference/IInferenceBackend.h &mdash; abstract base class</span>
+class IInferenceBackend
+{
+public:
+    virtual ~IInferenceBackend() = default;       <span class="c">// always virtual destructor on base classes</span>
+
+    virtual bool    loadModel(const QString &amp;path) = 0;
+    virtual bool    isReady() const = 0;
+    virtual QString errorString() const = 0;
+    virtual QImage  infer(const QImage &amp;input) = 0;
+    virtual void    setOverlayOpacity(double opacity) = 0;
+};</code></pre>
+<p>Two non-obvious rules worth remembering:</p>
+<ul>
+  <li><strong>Always declare the destructor virtual</strong> on a class meant to be used through a base
+      pointer. Without it, <code>delete basePtr</code> only calls the base destructor, leaking the derived
+      part. <code>virtual ~Foo() = default;</code> on the abstract class is the idiomatic fix.</li>
+  <li><strong>The cost is one vtable indirection per virtual call</strong>. Negligible compared to inference
+      (~50 ms); important to consider in tight inner loops. We're well outside any tight loop.</li>
+</ul>
+<p><span class="ref">src/inference/IInferenceBackend.h:18&ndash;38</span></p>
+
+<h3 id="unique-ptr"><code>std::unique_ptr</code> for non-<code>QObject</code> ownership <span class="badge">Step 3</span></h3>
+<p>Qt's parent-child tree manages every <code>QObject</code>'s lifetime &mdash; that's why we use raw
+   pointers for widgets and never <code>delete</code> them ourselves. But our <code>IInferenceBackend</code>,
+   <code>OnnxRunner</code>, and the PIMPL <code>Impl</code> inside it are NOT <code>QObject</code>s. For them
+   we use <code>std::unique_ptr</code>, which is C++'s zero-overhead RAII owning pointer.</p>
+<pre><code><span class="c">// src/app/InferenceController.h &mdash; owns the backend via unique_ptr</span>
+class InferenceController : public QObject
+{
+    Q_OBJECT
+public:
+    explicit InferenceController(std::unique_ptr&lt;IInferenceBackend&gt; backend,
+                                 QObject *parent = nullptr);
+    <span class="c">// ...</span>
+private:
+    std::unique_ptr&lt;IInferenceBackend&gt; m_backend;   <span class="c">// destroyed automatically with us</span>
+};
+
+<span class="c">// src/app/MainWindow.cpp &mdash; pass ownership in at construction</span>
+m_inference = new InferenceController(
+    std::make_unique&lt;OnnxSegmentationBackend&gt;(),
+    this);</code></pre>
+<p>Key idioms:</p>
+<ul>
+  <li><strong><code>std::make_unique&lt;T&gt;(args...)</code></strong> &mdash; the standard factory. Exception-safe,
+      one allocation, no raw <code>new</code> at the call site.</li>
+  <li><strong>Move-only.</strong> <code>unique_ptr</code> can't be copied &mdash; passing it to a constructor
+      <em>transfers</em> ownership. That's why we don't see <code>&amp;</code> on the parameter; the
+      <code>std::move</code> happens implicitly from the temporary returned by <code>make_unique</code>.</li>
+  <li><strong>Never mix with Qt parent ownership.</strong> If a <code>QObject</code> has a parent <em>and</em>
+      sits inside a <code>unique_ptr</code>, both try to delete it. Pick one model per object.</li>
+</ul>
+<p><span class="ref">src/app/InferenceController.h:39&ndash;47</span> &middot; <span class="ref">src/app/MainWindow.cpp:33&ndash;36</span></p>
+
+<h3 id="pimpl">PIMPL: hiding library headers behind a pointer <span class="badge">Step 3</span></h3>
+<p>The "pointer to implementation" idiom: declare an opaque <code>struct Impl</code> in the header, define it
+   in the .cpp. Useful when a class's implementation pulls in a big or messy header you don't want every
+   consumer to drag in. We use it to keep <code>onnxruntime_cxx_api.h</code> out of
+   <code>OnnxRunner.h</code>, so only <code>OnnxRunner.cpp</code> sees that header.</p>
+<pre><code><span class="c">// src/inference/OnnxRunner.h &mdash; forward-decl what we need, opaque Impl</span>
+namespace Ort {
+    struct Env;
+    struct Session;
+    struct SessionOptions;
+}
+
+class OnnxRunner
+{
+public:
+    OnnxRunner();
+    ~OnnxRunner();
+    <span class="c">// ...</span>
+private:
+    struct Impl;                            <span class="c">// declared here, defined in .cpp</span>
+    std::unique_ptr&lt;Impl&gt; m_impl;
+};
+
+<span class="c">// src/inference/OnnxRunner.cpp &mdash; the real ORT types live here only</span>
+#include &lt;onnxruntime_cxx_api.h&gt;
+
+struct OnnxRunner::Impl {
+    Ort::Env                       env{ORT_LOGGING_LEVEL_WARNING, "InferenceVisualizer"};
+    Ort::SessionOptions            options;
+    std::unique_ptr&lt;Ort::Session&gt;  session;
+    Ort::AllocatorWithDefaultOptions allocator;
+    std::vector&lt;Ort::Value&gt;        lastOutputs;
+};</code></pre>
+<p>Costs and benefits:</p>
+<ul>
+  <li><strong>Faster compiles.</strong> Files including <code>OnnxRunner.h</code> don't transitively
+      include 50+ ONNX Runtime headers.</li>
+  <li><strong>Cleaner ABI.</strong> Adding members to <code>Impl</code> doesn't change <code>OnnxRunner</code>'s
+      layout; downstream code doesn't recompile.</li>
+  <li><strong>One extra indirection on every member access.</strong> Negligible for our setup-cost class;
+      avoid PIMPL in hot inner loops.</li>
+  <li><strong>Destructor must be defined in the .cpp</strong>, not <code>= default</code> in the header
+      &mdash; otherwise the compiler tries to instantiate <code>~Impl</code> where <code>Impl</code> is
+      incomplete and errors out. (We do <code>~OnnxRunner() = default;</code> in the .cpp, which is fine.)</li>
+</ul>
+<p><span class="ref">src/inference/OnnxRunner.h:11&ndash;19,55&ndash;57</span> &middot; <span class="ref">src/inference/OnnxRunner.cpp:14&ndash;26</span></p>
+
 <!-- =========================================================== -->
-<h2 id="pitfalls">12. Common pitfalls</h2>
+<h2 id="inference">12. Inference pipeline</h2>
+
+<h3 id="iinferencebackend">The <code>IInferenceBackend</code> contract <span class="badge">Step 3</span></h3>
+<p>All inference backends &mdash; today's segmentation, tomorrow's detection, the day after's classification
+   &mdash; expose the same five operations. <code>InferenceController</code> talks to this interface only;
+   it never sees a concrete backend type.</p>
+<pre><code><span class="c">// src/inference/IInferenceBackend.h</span>
+class IInferenceBackend
+{
+public:
+    virtual ~IInferenceBackend() = default;
+
+    virtual bool    loadModel(const QString &amp;path) = 0;
+    virtual bool    isReady() const = 0;
+    virtual QString errorString() const = 0;
+    virtual QImage  infer(const QImage &amp;input) = 0;
+    virtual void    setOverlayOpacity(double opacity) = 0;
+};</code></pre>
+<p>Two design rules baked into the contract:</p>
+<ul>
+  <li><strong><code>infer()</code> returns a fully-composited <code>QImage</code></strong>, not a raw mask
+      or a list of boxes. The backend knows what its output means and how to render it; the controller stays
+      generic.</li>
+  <li><strong><code>setOverlayOpacity()</code> is a display knob</strong>, not a model parameter. Each
+      backend interprets it sensibly &mdash; segmentation uses it as mask alpha; a future detection backend
+      could use it for box-line opacity.</li>
+</ul>
+<p><span class="ref">src/inference/IInferenceBackend.h:18&ndash;38</span></p>
+
+<h3 id="onnxrunner">ONNX Runtime basics &mdash; <code>OnnxRunner</code> <span class="badge">Step 3</span></h3>
+<p>ONNX Runtime exposes a C++ API around three long-lived objects:</p>
+<ul>
+  <li><strong><code>Ort::Env</code></strong> &mdash; per-process logging and threading config. One per app is
+      enough; we create it inside <code>OnnxRunner::Impl</code>.</li>
+  <li><strong><code>Ort::SessionOptions</code></strong> &mdash; graph optimisation level, intra-op threads,
+      execution providers (CPU is the default; CUDA/DirectML are step-4 GPU targets).</li>
+  <li><strong><code>Ort::Session</code></strong> &mdash; one per loaded model. Contains the parsed graph and
+      the weights. <code>Session::Run</code> is the per-frame work.</li>
+</ul>
+<pre><code><span class="c">// src/inference/OnnxRunner.cpp &mdash; loadModel + run</span>
+#ifdef _WIN32
+    const std::wstring widePath = path.toStdWString();   <span class="c">// ORT requires wchar_t on Win32</span>
+    m_impl-&gt;session = std::make_unique&lt;Ort::Session&gt;(
+        m_impl-&gt;env, widePath.c_str(), m_impl-&gt;options);
+#else
+    const std::string narrowPath = path.toStdString();
+    m_impl-&gt;session = std::make_unique&lt;Ort::Session&gt;(
+        m_impl-&gt;env, narrowPath.c_str(), m_impl-&gt;options);
+#endif
+
+<span class="c">// later, per frame:</span>
+Ort::Value inputTensor = Ort::Value::CreateTensor&lt;float&gt;(
+    memInfo,
+    const_cast&lt;float *&gt;(inputData), numElements,
+    inputShape.data(), inputShape.size());
+
+const char *inputNames[]  = { m_inputName.c_str() };
+const char *outputNames[] = { m_outputName.c_str() };
+
+m_impl-&gt;lastOutputs = m_impl-&gt;session-&gt;Run(
+    Ort::RunOptions{nullptr},
+    inputNames,  &amp;inputTensor, 1,
+    outputNames, 1);</code></pre>
+<p>Input and output <strong>names</strong> are read from the loaded graph (not hard-coded), so we work with
+   models whose authors picked different names. Models can have multiple outputs (YOLOv8 segmentation
+   emits two: detections + mask prototypes) so the names are stored as vectors:</p>
+<pre><code><span class="c">// src/inference/OnnxRunner.cpp &mdash; discover all input/output names after load</span>
+for (size_t i = 0; i &lt; numInputs; ++i) {
+    auto name = m_impl-&gt;session-&gt;GetInputNameAllocated(i, m_impl-&gt;allocator);
+    m_inputNames.emplace_back(name.get());
+}
+for (size_t i = 0; i &lt; numOutputs; ++i) {
+    auto name = m_impl-&gt;session-&gt;GetOutputNameAllocated(i, m_impl-&gt;allocator);
+    m_outputNames.emplace_back(name.get());
+}</code></pre>
+<p><code>run()</code> returns a <code>std::vector&lt;TensorView&gt;</code> &mdash; one per output. Backends that
+   only expect one output use <code>result[0]</code>; YOLOv8 segmentation uses both <code>result[0]</code>
+   (detections) and <code>result[1]</code> (prototypes).</p>
+<p><span class="ref">src/inference/OnnxRunner.cpp:55&ndash;121,128&ndash;187</span></p>
+
+<h3 id="nchw">Preprocessing: QImage → NCHW float tensor <span class="badge">Step 3</span></h3>
+<p>ONNX models from PyTorch nearly always expect <strong>NCHW</strong> layout: a 4-D tensor of
+   <code>[batch, channels, height, width]</code>, with channels stored as separate planes (first all R
+   values, then all G, then all B). NHWC is the alternative (channels interleaved per pixel) but very rare
+   for PyTorch-exported models.</p>
+<p>The transform from <code>QImage</code> to NCHW is: resize to model input dimensions, convert to RGB888,
+   scale to <code>[0, 1]</code> floats, normalize with per-channel mean/std (whatever the model was trained
+   with &mdash; ImageNet defaults shown below), and pack into three contiguous planes.</p>
+<pre><code><span class="c">// src/inference/OnnxSegmentationBackend.cpp &mdash; build the NCHW float buffer</span>
+QImage resized = input.scaled(W, H, Qt::IgnoreAspectRatio,
+                              Qt::SmoothTransformation);
+if (resized.format() != QImage::Format_RGB888) {
+    resized = resized.convertToFormat(QImage::Format_RGB888);
+}
+
+m_inputBuffer.assign(static_cast&lt;size_t&gt;(C * H * W), 0.0f);
+
+const float invStdR = 1.0f / m_cfg.std_[0];
+const float invStdG = 1.0f / m_cfg.std_[1];
+const float invStdB = 1.0f / m_cfg.std_[2];
+
+for (int y = 0; y &lt; H; ++y) {
+    const uchar *line = resized.constScanLine(y);
+    for (int x = 0; x &lt; W; ++x) {
+        const float r = line[x * 3 + 0] / 255.0f;
+        const float g = line[x * 3 + 1] / 255.0f;
+        const float b = line[x * 3 + 2] / 255.0f;
+        m_inputBuffer[0 * H * W + y * W + x] = (r - m_cfg.mean[0]) * invStdR;   <span class="c">// R plane</span>
+        m_inputBuffer[1 * H * W + y * W + x] = (g - m_cfg.mean[1]) * invStdG;   <span class="c">// G plane</span>
+        m_inputBuffer[2 * H * W + y * W + x] = (b - m_cfg.mean[2]) * invStdB;   <span class="c">// B plane</span>
+    }
+}</code></pre>
+<p><span class="ref">src/inference/OnnxSegmentationBackend.cpp:66&ndash;101</span></p>
+
+<h3 id="yolo-decode">Postprocessing: YOLOv8 instance-segmentation decode <span class="badge">Step 3</span></h3>
+<p>The Step 3 model is a <strong>YOLOv8 instance-segmentation</strong> network, not a pure semantic-segmentation
+   one. Its two outputs have a totally different shape: a per-anchor tensor of bbox+classes+mask-coefficients,
+   and a tensor of mask prototypes. The post-processing pipeline:</p>
+<ol>
+  <li><strong>Decode</strong> each of the 8400 anchors into a candidate detection: box (xywh), best class
+      score, 32 mask coefficients. Drop anything below the confidence threshold (default 0.25).</li>
+  <li><strong>Non-max suppression (NMS)</strong> within each class: sort by score desc, suppress later
+      detections whose IoU with an earlier one exceeds 0.7.</li>
+  <li><strong>Per-surviving-detection mask</strong> = sigmoid( mask_coeffs &middot; mask_prototypes ), giving
+      a 160&times;160 mask per instance. Binarise at 0.5; paint inside its bbox with the class color.</li>
+</ol>
+<pre><code><span class="c">// src/inference/OnnxSegmentationBackend.cpp &mdash; decode + NMS over YOLO output0</span>
+for (int i = 0; i &lt; anchors; ++i) {
+    int   bestC = 0;
+    float bestS = val(clsOff, i);
+    for (int c = 1; c &lt; m_cfg.numClasses; ++c) {
+        const float s = val(clsOff + c, i);
+        if (s &gt; bestS) { bestS = s; bestC = c; }
+    }
+    if (bestS &lt; m_cfg.confidenceThreshold) continue;
+
+    <span class="c">// xywh -> xyxy (in model input space, e.g. 640x640)</span>
+    Detection d;
+    d.x1 = val(0, i) - val(2, i) * 0.5f;
+    d.y1 = val(1, i) - val(3, i) * 0.5f;
+    d.x2 = val(0, i) + val(2, i) * 0.5f;
+    d.y2 = val(1, i) + val(3, i) * 0.5f;
+    d.score = bestS;
+    d.classId = bestC;
+    d.maskCoeffs.resize(m_cfg.numMaskCoeffs);
+    for (int k = 0; k &lt; m_cfg.numMaskCoeffs; ++k) {
+        d.maskCoeffs[k] = val(maskOff + k, i);
+    }
+    candidates.push_back(std::move(d));
+}</code></pre>
+<pre><code><span class="c">// src/inference/OnnxSegmentationBackend.cpp &mdash; per-detection mask = sigmoid(coeffs @ prototypes)</span>
+for (int y = 0; y &lt; ph; ++y) {
+    for (int x = 0; x &lt; pw; ++x) {
+        float sum = 0.f;
+        for (int k = 0; k &lt; nm; ++k) {
+            sum += d.maskCoeffs[k] * proto(k, y, x);
+        }
+        instMask[y * pw + x] = 1.f / (1.f + std::exp(-sum));   <span class="c">// sigmoid</span>
+    }
+}
+<span class="c">// then paint pixels &gt; maskThreshold inside the bbox with the class color</span></code></pre>
+<p>A <em>semantic</em> segmentation model (UNet, DeepLab) would use a different pipeline entirely &mdash;
+   per-pixel argmax over a <code>[1, C, H, W]</code> output. That code is not in the repo today; supporting
+   both kinds of models behind a single generic loader is on the <a href="index.html#future">future-improvements</a> list.</p>
+<p><span class="ref">src/inference/OnnxSegmentationBackend.cpp:96&ndash;185,194&ndash;292</span></p>
+
+<h3 id="inference-controller">Controller-as-orchestrator (FIFO + backpressure) <span class="badge">Step 3</span></h3>
+<p><code>InferenceController</code> owns the backend, receives <code>QImage</code> frames from outside (an
+   image open, a video frame), runs them through the backend in arrival order, emits the result. Three
+   design properties:</p>
+<ol>
+  <li><strong>Always emits a <code>processedFrameReady</code> signal</strong>, even when inference is
+      disabled &mdash; the emitted image is just the input unchanged. This keeps Step 2's dual-pane mirror
+      behavior working with zero special-case wiring in <code>MainWindow</code>.</li>
+  <li><strong>Process every frame, in order, never drop.</strong> Frames are appended to a FIFO. Each frame
+      is processed exactly once. This is what the user actually wants for offline-style inference: every
+      frame matters.</li>
+  <li><strong>Backpressure to the source.</strong> When the FIFO grows past a high watermark, the
+      controller emits <code>wantsSourcePaused(true)</code>; <code>MainWindow</code> forwards that to the
+      video player, which pauses. When the queue drains to a low watermark, the controller emits
+      <code>wantsSourcePaused(false)</code> and the player resumes. The hysteresis (high vs low) prevents
+      pause/resume thrashing every single frame.</li>
+</ol>
+<pre><code><span class="c">// src/app/InferenceController.cpp &mdash; FIFO enqueue + backpressure on high watermark</span>
+void InferenceController::processFrame(const QImage &amp;input)
+{
+    if (!m_enabled || !isReady() || input.isNull()) {
+        emit processedFrameReady(input);   <span class="c">// passthrough preserves Step 2 mirror</span>
+        return;
+    }
+
+    m_frameQueue.enqueue(input);            <span class="c">// FIFO: never drop, never reorder</span>
+
+    if (!m_backpressured &amp;&amp; m_frameQueue.size() &gt;= m_highWatermark) {
+        m_backpressured = true;
+        emit wantsSourcePaused(true);       <span class="c">// MainWindow pauses the video</span>
+    }
+
+    if (!m_busy) {
+        m_busy = true;
+        QMetaObject::invokeMethod(this,
+            &amp;InferenceController::runNextQueuedFrame,
+            Qt::QueuedConnection);          <span class="c">// next event-loop tick, not now</span>
+    }
+}</code></pre>
+<pre><code><span class="c">// src/app/InferenceController.cpp &mdash; pull one, infer, release backpressure, loop</span>
+void InferenceController::runNextQueuedFrame()
+{
+    if (m_frameQueue.isEmpty() || !isReady() || !m_enabled) {
+        m_busy = false;
+        if (m_backpressured) {
+            m_backpressured = false;
+            emit wantsSourcePaused(false);
+        }
+        return;
+    }
+
+    QImage frame = m_frameQueue.dequeue();
+    QImage result = m_backend-&gt;infer(frame);   <span class="c">// blocks GUI; step 4 fixes</span>
+    emit processedFrameReady(result.isNull() ? frame : result);
+
+    if (m_backpressured &amp;&amp; m_frameQueue.size() &lt;= m_lowWatermark) {
+        m_backpressured = false;
+        emit wantsSourcePaused(false);          <span class="c">// MainWindow resumes the video</span>
+    }
+
+    if (!m_frameQueue.isEmpty()) {
+        QMetaObject::invokeMethod(this,
+            &amp;InferenceController::runNextQueuedFrame,
+            Qt::QueuedConnection);              <span class="c">// re-queue, NOT a tight while loop</span>
+    } else {
+        m_busy = false;
+    }
+}</code></pre>
+<p>The user's experience: when CPU inference is much slower than the video frame period (e.g. 3 sec per
+   frame on a 30 fps video), the video plays in short bursts &mdash; decode a couple of frames, the queue
+   hits the high watermark, video pauses, inference grinds through the queue, video resumes when caught up.
+   Every frame in the video appears on the processed pane in its native order. Memory stays bounded at the
+   high watermark (typically 2&ndash;4 frames buffered). The MainWindow side tracks whether <em>it</em>
+   initiated the pause (vs. the user clicking pause) so user pauses are never auto-resumed.</p>
+<p>This is the standard producer-consumer backpressure pattern. The simpler "drop intermediate frames"
+   variant of this is also useful when you want the most-recent frame regardless of order (real-time
+   monitoring); for batch-style inference where you can't lose anything, FIFO + backpressure is the right
+   shape. Step 4 (worker-thread inference) lifts inference off the GUI thread; the FIFO + backpressure
+   pattern is still the right shape for the cross-thread channel.</p>
+<p><span class="ref">src/app/InferenceController.cpp:70&ndash;175</span></p>
+
+<h3 id="segmentation-backend"><code>OnnxSegmentationBackend</code>: putting it all together <span class="badge">Step 3</span></h3>
+<p>The full <code>infer()</code> path: preprocess → run → decode+NMS → per-instance mask → composite onto
+   original.</p>
+<pre><code><span class="c">// src/inference/OnnxSegmentationBackend.cpp &mdash; YOLOv8 inference path</span>
+QImage OnnxSegmentationBackend::infer(const QImage &amp;input)
+{
+    m_lastError.clear();
+    if (!isReady()) {
+        m_lastError = QStringLiteral("Backend has no loaded model.");
+        return QImage();
+    }
+    if (input.isNull()) {
+        m_lastError = QStringLiteral("Input image is null.");
+        return QImage();
+    }
+
+    buildInputTensor(input);
+
+    const std::vector&lt;int64_t&gt; inShape = {
+        1, 3, m_cfg.inputHeight, m_cfg.inputWidth
+    };
+    auto outputs = m_runner-&gt;run(m_inputBuffer.data(), inShape);
+    if (outputs.size() &lt; 2) {
+        m_lastError = QStringLiteral("Expected 2 outputs, got %1.")
+                          .arg(outputs.size());
+        return QImage();
+    }
+
+    const auto dets = decodeAndNms(outputs[0]);
+    if (dets.empty()) {
+        return input;   <span class="c">// no detections -&gt; just show the original</span>
+    }
+
+    const QImage mask = buildMaskImage(dets, outputs[1], input.size());
+    return compositeOverlay(input, mask);
+}</code></pre>
+<p><span class="ref">src/inference/OnnxSegmentationBackend.cpp:298&ndash;328</span></p>
+
+<!-- =========================================================== -->
+<h2 id="overlays">13. Image overlays with QPainter</h2>
+
+<h3 id="qpainter-overlay">Compositing a mask onto an image <span class="badge">Step 3</span></h3>
+<p>The mask we built in <a href="#argmax-postprocess">postprocessing</a> is an ARGB <code>QImage</code> at the
+   original image's display size: every pixel is either fully opaque colored (for visible classes) or fully
+   transparent (for hidden or background classes). To draw it on top of the input image, we use
+   <code>QPainter</code> with a single global opacity for the mask layer.</p>
+<pre><code><span class="c">// src/inference/OnnxSegmentationBackend.cpp &mdash; QPainter composite</span>
+QImage OnnxSegmentationBackend::compositeOverlay(
+    const QImage &amp;original,
+    const QImage &amp;mask) const
+{
+    QImage result = original.convertToFormat(QImage::Format_ARGB32);
+
+    QPainter painter(&amp;result);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, false);
+    painter.setOpacity(m_opacity);            <span class="c">// 0.0 .. 1.0; user-controllable</span>
+    painter.drawImage(0, 0, mask);
+    painter.end();
+
+    return result;
+}</code></pre>
+<p>Key things going on:</p>
+<ul>
+  <li><strong><code>QPainter::setOpacity</code></strong> applies a uniform alpha to every subsequent drawing
+      operation. Simpler than per-pixel <code>qRgba(...,alpha)</code> and lets the UI vary opacity at
+      runtime without re-running inference.</li>
+  <li><strong><code>convertToFormat(Format_ARGB32)</code></strong> ensures the destination has an alpha
+      channel. Painting on an <code>RGB888</code> image silently drops alpha and the overlay won't blend
+      correctly.</li>
+  <li><strong>Nearest-neighbour scaling</strong> when the mask was scaled up to display size (see
+      <a href="#argmax-postprocess">postprocessing</a>). Smooth scaling would bleed class colors into each
+      other at boundaries &mdash; we want hard edges.</li>
+  <li><strong><code>painter.end()</code></strong> isn't strictly required (destructor calls it) but is
+      cheap insurance against subtle bugs if you return a <code>QImage</code> by value while the painter is
+      still active.</li>
+</ul>
+<p><span class="ref">src/inference/OnnxSegmentationBackend.cpp:191&ndash;205</span></p>
+
+<h3 id="class-palette">Class palette as a Config <span class="badge">Step 3</span></h3>
+<p>Per-class colors and visibility live in a <code>Config</code> struct on the backend, not in
+   <code>MainWindow</code> or in a hard-coded array somewhere. Why: tomorrow's UI ("hide not-critical class
+   so I only see the critical regions") is a one-line setter call. Today's defaults capture the
+   industrial-inspection use case.</p>
+<pre><code><span class="c">// src/inference/OnnxSegmentationBackend.h &mdash; class palette in Config</span>
+struct ClassStyle {
+    QString name;       <span class="c">// "not-critical", "critical"</span>
+    QColor  color;      <span class="c">// RGB; alpha applied at composite time</span>
+    bool    visible;    <span class="c">// hide background or noisy classes from the overlay</span>
+};
+
+struct Config {
+    <span class="c">// ... shape and preprocessing fields ...</span>
+    std::vector&lt;ClassStyle&gt; classes = {
+        {"not-critical", QColor(255, 215,  64), /*visible=*/ true},   <span class="c">// dim yellow</span>
+        {"critical",     QColor(220,  20,  20), /*visible=*/ true},   <span class="c">// bold red</span>
+    };
+};</code></pre>
+<p><span class="ref">src/inference/OnnxSegmentationBackend.h:24&ndash;52</span></p>
+
+<!-- =========================================================== -->
+<h2 id="pitfalls">14. Common pitfalls</h2>
 
 <div class="pitfall"><strong>Forgetting <code>Q_OBJECT</code>.</strong> <span class="badge">Step 1</span>
   Without it, <code>connect()</code> compiles but does nothing &mdash; or you get
@@ -858,6 +1314,61 @@ public slots:
   <code>connect(sig, []() { /* uses captured this */ });</code> compiles and runs, but the connection lives
   forever &mdash; even after <code>this</code> is destroyed. Always pass <code>this</code> as the third
   argument so Qt automatically disconnects when the context object dies.</div>
+
+<div class="pitfall"><strong>Forgot to copy <code>onnxruntime.dll</code> next to the .exe.</strong> <span class="badge">Step 3</span>
+  Same <code>STATUS_DLL_NOT_FOUND</code> (0xc0000135) story as Qt's DLLs in Step 2. CMake has a
+  post-build <code>copy_if_different</code> step that puts the DLL next to the executable; if that step is
+  removed or fails (e.g. ORT installed at a non-default path), the .exe won't start. The
+  <code>.vscode/launch.json</code> also prepends the ORT lib dir to PATH as a belt-and-braces.</div>
+
+<div class="pitfall"><strong>NCHW vs NHWC layout mismatch.</strong> <span class="badge">Step 3</span>
+  If your model expects NHWC (channels last, interleaved) but you feed it NCHW (channel planes), ORT
+  doesn't complain &mdash; the tensor dimensions match. You just get garbage output: a uniform-class mask,
+  or noise. Same in reverse. <code>OnnxSegmentationBackend::buildMaskImage</code> tries to detect output
+  layout heuristically (channel-axis matches numClasses); on input the layout is hard-coded NCHW because
+  that's what PyTorch exports produce.</div>
+
+<div class="pitfall"><strong>Preprocessing mismatch (normalization).</strong> <span class="badge">Step 3</span>
+  Models are sensitive to the mean/std they were trained with. ImageNet normalization is the default in
+  <code>OnnxSegmentationBackend::Config</code>; if your model used <code>[0,1]</code> raw or a custom mean,
+  you'll see an overlay that's biased toward one class regardless of input. Symptom: every pixel becomes
+  "critical" or every pixel becomes "not-critical". Fix: adjust <code>Config::mean</code> /
+  <code>Config::std_</code> to match training.</div>
+
+<div class="pitfall"><strong>ORT input/output names hard-coded incorrectly.</strong> <span class="badge">Step 3</span>
+  If you hard-code <code>"input"</code> / <code>"output"</code> but your model uses
+  <code>"input_1"</code> / <code>"output_1"</code> (Keras default) or something else, <code>Session::Run</code>
+  throws with a cryptic <code>"Invalid input name"</code>. <code>OnnxRunner</code> sidesteps this by
+  reading the names from the graph after loading; only the backend's <code>Config</code> defaults are
+  used before the first model is loaded.</div>
+
+<div class="pitfall"><strong>Mixing Qt parent-child with <code>std::unique_ptr</code>.</strong> <span class="badge">Step 3</span>
+  <code>InferenceController</code> holds the backend in a <code>unique_ptr</code> &mdash; OK because the
+  backend isn't a <code>QObject</code>. If you put a <code>QObject</code> in a <code>unique_ptr</code>
+  <em>and</em> set a parent on it, both ownership systems try to delete the object. Pick one per object.
+  Rule of thumb: <code>QObject</code>s → parent-child, raw pointers; everything else → smart pointers.</div>
+
+<div class="pitfall"><strong>Calling inference on the GUI thread.</strong> <span class="badge">Step 3 (known limitation)</span>
+  Step 3 runs inference on the GUI thread for simplicity. For 30 FPS video, every inference (~100–500 ms)
+  freezes the UI for that duration. The frame-drop pattern in <code>InferenceController</code> keeps the
+  backlog bounded so the app doesn't appear hung, but the processed pane still updates only at the
+  inference rate (a few Hz). Step 4 (formerly Step 6) moves the backend behind a <code>QThread</code> with
+  <code>Qt::QueuedConnection</code>, so the GUI stays responsive and the worker handles drops.</div>
+
+<div class="pitfall"><strong>Unbounded signal-driven backlog.</strong> <span class="badge">Step 3</span>
+  Connecting a high-frequency producer (<code>QVideoSink::videoFrameChanged</code> at 30 FPS) directly to
+  a slow consumer slot is a recipe for OOM and runaway latency. Qt's signal queue grows without bound by
+  default. Pick one of: (a) FIFO + backpressure to the producer (what <code>InferenceController</code>
+  does &mdash; preserves every frame, pauses the source when behind); (b) drop intermediate items via a
+  one-slot replace-buffer (good when you only care about the most recent frame); (c) a periodic
+  <code>QTimer</code> pull instead of a push (when sample timing matters more than every-frame).</div>
+
+<div class="pitfall"><strong>Tight <code>while</code> loop instead of <code>Qt::QueuedConnection</code> self-reinvocation.</strong> <span class="badge">Step 3</span>
+  When <code>runPendingInference</code> finishes one frame and finds another pending, it'd be tempting to
+  loop: <code>while (m_pendingFrame.isValid()) infer(...)</code>. Don't &mdash; that's exactly the bug we
+  just fixed. A tight loop never yields to the event loop, so paint events never run and the app freezes.
+  The correct pattern is to re-queue yourself via <code>QMetaObject::invokeMethod(..., Qt::QueuedConnection)</code>,
+  which guarantees the event loop runs at least once between iterations.</div>
 
 <hr />
 <p class="subtitle">Concepts captured during construction of <a href="index.html">InferenceVisualizer</a>.

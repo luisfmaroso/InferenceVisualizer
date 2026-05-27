@@ -1,12 +1,18 @@
 #include "app/MainWindow.h"
 
+#include "app/InferenceController.h"
+#include "inference/OnnxSegmentationBackend.h"
 #include "media/VideoController.h"
 #include "ui/ImageView.h"
 #include "ui/VideoControls.h"
 
 #include <QAction>
+#include <QActionGroup>
 #include <QApplication>
+#include <QDebug>
+#include <QDir>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QImage>
 #include <QImageReader>
 #include <QKeySequence>
@@ -19,12 +25,17 @@
 #include <QVBoxLayout>
 #include <QWidget>
 
+#include <memory>
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , m_originalView(new ImageView)         // parents set inside buildCentralWidget
     , m_processedView(new ImageView)
     , m_controls(new VideoControls)
     , m_controller(new VideoController(this))
+    , m_inference(new InferenceController(
+          std::make_unique<OnnxSegmentationBackend>(),
+          this))
 {
     setWindowTitle(tr("InferenceVisualizer"));
     resize(1200, 720);
@@ -32,8 +43,37 @@ MainWindow::MainWindow(QWidget *parent)
     buildCentralWidget();
     buildMenus();
     wireController();
+    tryAutoLoadModel();   // Step 3: auto-load model_tcc.onnx if present next to the .exe
 
     statusBar()->showMessage(tr("Ready."));
+}
+
+void MainWindow::tryAutoLoadModel()
+{
+    // The model lives next to the executable -- whatever path windeployqt /
+    // CMake put it in. We don't accept CLI args; this is the only path.
+    const QString modelPath = QDir(QApplication::applicationDirPath())
+                                  .filePath(QStringLiteral("model_tcc.onnx"));
+
+    if (!QFileInfo::exists(modelPath)) {
+        qDebug() << "[MainWindow] auto-load: model not found at" << modelPath
+                 << "-- use Inference -> Load Model to pick one manually";
+        statusBar()->showMessage(
+            tr("No model_tcc.onnx next to the .exe. "
+               "Use Inference -> Load Model to pick one."),
+            8000);
+        return;
+    }
+
+    qDebug() << "[MainWindow] auto-loading model:" << modelPath;
+    m_inference->loadModel(modelPath);
+
+    // If the load succeeded, m_runInferenceAction was enabled by
+    // onModelLoaded(). Auto-toggle it on so the user gets inference
+    // immediately on the first frame they open.
+    if (m_runInferenceAction && m_runInferenceAction->isEnabled()) {
+        m_runInferenceAction->setChecked(true);
+    }
 }
 
 void MainWindow::buildCentralWidget()
@@ -43,7 +83,7 @@ void MainWindow::buildCentralWidget()
     splitter->addWidget(m_processedView);
     splitter->setStretchFactor(0, 1);
     splitter->setStretchFactor(1, 1);
-    splitter->setChildrenCollapsible(false); // prevents accidental zero-width pane
+    splitter->setChildrenCollapsible(false);
 
     auto *container = new QWidget;
     auto *layout    = new QVBoxLayout(container);
@@ -52,15 +92,16 @@ void MainWindow::buildCentralWidget()
     layout->addWidget(splitter, /*stretch=*/1);
     layout->addWidget(m_controls);
 
-    setCentralWidget(container); // QMainWindow takes ownership
+    setCentralWidget(container);
 }
 
 void MainWindow::buildMenus()
 {
+    // --- File ----------------------------------------------------------
     auto *fileMenu = menuBar()->addMenu(tr("&File"));
 
     auto *openImageAction = fileMenu->addAction(tr("&Open Image..."));
-    openImageAction->setShortcut(QKeySequence::Open);          // Ctrl+O
+    openImageAction->setShortcut(QKeySequence::Open);
     connect(openImageAction, &QAction::triggered, this, &MainWindow::openImage);
 
     auto *openVideoAction = fileMenu->addAction(tr("Open &Video..."));
@@ -72,16 +113,56 @@ void MainWindow::buildMenus()
     auto *exitAction = fileMenu->addAction(tr("E&xit"));
     exitAction->setShortcut(QKeySequence::Quit);
     connect(exitAction, &QAction::triggered, qApp, &QApplication::quit);
+
+    // --- Inference -----------------------------------------------------
+    auto *inferenceMenu = menuBar()->addMenu(tr("&Inference"));
+
+    auto *loadModelAction = inferenceMenu->addAction(tr("&Load Model..."));
+    loadModelAction->setShortcut(QKeySequence(tr("Ctrl+M")));
+    connect(loadModelAction, &QAction::triggered, this, &MainWindow::openModelDialog);
+
+    m_runInferenceAction = inferenceMenu->addAction(tr("&Run Inference"));
+    m_runInferenceAction->setCheckable(true);
+    m_runInferenceAction->setChecked(false);
+    m_runInferenceAction->setEnabled(false);  // gets enabled once a model loads
+    m_runInferenceAction->setShortcut(QKeySequence(tr("Ctrl+R")));
+    connect(m_runInferenceAction, &QAction::toggled,
+            m_inference, &InferenceController::setEnabled);
+
+    // Opacity submenu -- a small QActionGroup with three presets. Keeping
+    // it preset-based for step 3; a real slider is a polish item.
+    auto *opacityMenu = inferenceMenu->addMenu(tr("Mask &Opacity"));
+    auto *opacityGroup = new QActionGroup(this);
+    opacityGroup->setExclusive(true);
+
+    const struct { QString label; double value; bool isDefault; } presets[] = {
+        {tr("25%"), 0.25, false},
+        {tr("50%"), 0.50, true},
+        {tr("75%"), 0.75, false},
+    };
+    for (const auto &p : presets) {
+        QAction *act = opacityMenu->addAction(p.label);
+        act->setCheckable(true);
+        act->setChecked(p.isDefault);
+        opacityGroup->addAction(act);
+        const double value = p.value;
+        connect(act, &QAction::triggered, this,
+                [this, value]() { m_inference->setOverlayOpacity(value); });
+    }
 }
 
 void MainWindow::wireController()
 {
-    // Controller -> views: every decoded frame goes to BOTH views in step 2.
-    // In step 3, we'll route the right pane through the inference backend
-    // instead of duplicating the frame.
+    // Controller -> original view: every decoded frame goes here directly.
     connect(m_controller, &VideoController::frameReady,
-            m_originalView,  &ImageView::setImage);
+            m_originalView, &ImageView::setImage);
+
+    // Controller -> inference -> processed view. The inference controller
+    // emits the frame unchanged when inference is disabled, so the right
+    // pane keeps mirroring the left in passthrough mode.
     connect(m_controller, &VideoController::frameReady,
+            m_inference,  &InferenceController::processFrame);
+    connect(m_inference,  &InferenceController::processedFrameReady,
             m_processedView, &ImageView::setImage);
 
     // Controller -> controls: keep the slider / time label in sync.
@@ -90,7 +171,7 @@ void MainWindow::wireController()
     connect(m_controller, &VideoController::positionChanged,
             m_controls,   &VideoControls::setPosition);
 
-    // Playback state drives two things: the button glyph, and our status bar.
+    // Playback state -> button glyph + status bar.
     connect(m_controller, &VideoController::playbackStateChanged,
             this,         &MainWindow::onPlaybackStateChanged);
 
@@ -103,6 +184,20 @@ void MainWindow::wireController()
             m_controller, &VideoController::togglePlayPause);
     connect(m_controls, &VideoControls::seekRequested,
             m_controller, &VideoController::seek);
+
+    // Inference -> UI feedback
+    connect(m_inference, &InferenceController::modelLoaded,
+            this,        &MainWindow::onModelLoaded);
+    connect(m_inference, &InferenceController::modelLoadFailed,
+            this,        &MainWindow::onModelLoadFailed);
+    connect(m_inference, &InferenceController::inferenceFailed,
+            this,        &MainWindow::onInferenceFailed);
+
+    // Inference backpressure -> video pause/resume. This is what gives us
+    // the "process every frame" guarantee: when inference falls behind, we
+    // pause the source until the queue drains. The video plays in bursts.
+    connect(m_inference, &InferenceController::wantsSourcePaused,
+            this,        &MainWindow::onInferenceWantsSourcePaused);
 }
 
 void MainWindow::openImage()
@@ -133,7 +228,10 @@ void MainWindow::openImage()
     m_controls->setEnabledControls(false);
 
     m_originalView->setImage(image);
-    m_processedView->setImage(image); // mirror until step 3 fills the right pane
+    // Route the still image through inference too -- the controller emits
+    // a passthrough QImage when inference is disabled.
+    m_inference->processFrame(image);
+
     statusBar()->showMessage(
         tr("Loaded %1 (%2x%3)").arg(path).arg(image.width()).arg(image.height()),
         5000);
@@ -141,8 +239,6 @@ void MainWindow::openImage()
 
 void MainWindow::openVideo()
 {
-    // We let the user pick anything; QMediaPlayer will report the real error
-    // if the format isn't supported by the active backend.
     const QString filter = tr("Videos (*.mp4 *.mov *.avi *.mkv *.webm *.wmv);;All files (*)");
     const QString path = QFileDialog::getOpenFileName(
         this, tr("Open Video"), QString(), filter);
@@ -157,6 +253,18 @@ void MainWindow::openVideo()
     m_controls->setEnabledControls(true);
     m_controller->play();
     statusBar()->showMessage(tr("Playing %1").arg(path), 5000);
+}
+
+void MainWindow::openModelDialog()
+{
+    const QString path = QFileDialog::getOpenFileName(
+        this,
+        tr("Load ONNX Model"),
+        QString(),
+        tr("ONNX models (*.onnx);;All files (*)"));
+    if (path.isEmpty()) return;
+
+    m_inference->loadModel(path);
 }
 
 void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state)
@@ -181,4 +289,51 @@ void MainWindow::onMediaError(const QString &message)
 {
     m_controls->setEnabledControls(false);
     QMessageBox::warning(this, tr("Playback error"), message);
+}
+
+void MainWindow::onModelLoaded(const QString &path)
+{
+    const QString shortName = QFileInfo(path).fileName();
+    statusBar()->showMessage(tr("Loaded: %1").arg(shortName), 5000);
+
+    if (m_runInferenceAction) {
+        m_runInferenceAction->setEnabled(true);
+    }
+}
+
+void MainWindow::onModelLoadFailed(const QString &message)
+{
+    QMessageBox::warning(this, tr("Could not load model"), message);
+    statusBar()->showMessage(tr("Model load failed"), 5000);
+
+    if (m_runInferenceAction) {
+        m_runInferenceAction->setChecked(false);
+        m_runInferenceAction->setEnabled(false);
+    }
+}
+
+void MainWindow::onInferenceFailed(const QString &message)
+{
+    // Soft-fail: surface to status bar, don't pop a modal on every frame.
+    statusBar()->showMessage(tr("Inference failed: %1").arg(message), 4000);
+}
+
+void MainWindow::onInferenceWantsSourcePaused(bool paused)
+{
+    // We only act if WE initiated the most recent pause. If the user paused
+    // manually, we leave their pause alone -- and we don't auto-resume what
+    // they explicitly stopped.
+    if (paused) {
+        // Inference is falling behind: pause the player IF it's playing.
+        if (m_controller->playbackState() == QMediaPlayer::PlayingState) {
+            m_controller->pause();
+            m_pausedByBackpressure = true;
+        }
+    } else {
+        // Inference has caught up: resume only if WE paused it.
+        if (m_pausedByBackpressure) {
+            m_pausedByBackpressure = false;
+            m_controller->play();
+        }
+    }
 }
