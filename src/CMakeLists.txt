@@ -23,24 +23,20 @@ target_sources(InferenceVisualizer PRIVATE
 
 target_include_directories(InferenceVisualizer PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
-    "${ONNXRUNTIME_DIR}/include"
 )
 
 target_link_libraries(InferenceVisualizer PRIVATE
     Qt6::Widgets
     Qt6::Multimedia
-    "${ONNXRUNTIME_LIB}"
+    OnnxRuntime
 )
 
 # On Windows, copy onnxruntime.dll next to the built .exe so the loader
 # finds it at launch. Without this you'd hit STATUS_DLL_NOT_FOUND
 # (0xc0000135) -- same loader issue we documented in step 2 for Qt's DLLs.
 #
-# On Linux/macOS the equivalent (libonnxruntime.so / .dylib) is discovered
-# via LD_LIBRARY_PATH / DYLD_LIBRARY_PATH, which the .vscode/launch.json
-# Linux configuration sets to point at ${HOME}/onnxruntime/lib. No copy step
-# needed (and copying a .so wouldn't help anyway -- the application
-# directory isn't on the default Linux loader search path).
+# On Linux/macOS the system package installs libonnxruntime.so to a standard
+# loader path, so no copy or LD_LIBRARY_PATH override is needed.
 if(WIN32)
     add_custom_command(TARGET InferenceVisualizer POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
