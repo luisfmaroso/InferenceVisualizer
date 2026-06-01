@@ -1,4 +1,4 @@
-#include "inference/OnnxSegmentationBackend.h"
+#include "inference/OnnxYoloSegBackend.h"
 
 #include <QDebug>
 #include <QPainter>
@@ -8,49 +8,50 @@
 #include <limits>
 
 // ===========================================================================
-// CONFIG: if your model differs from the defaults in
-// OnnxSegmentationBackend.h, edit the Config defaults (touches one place) or
-// call backend->setConfig(cfg) before loadModel() (per-instance override).
+// CONFIG: if your model differs from the defaults in OnnxYoloSegBackend.h,
+// edit the Config defaults (touches one place) or call setConfig(cfg) before
+// loadModel() (per-instance override).
 //
-// Quantities that vary across models:
+// Note: confidenceThreshold and the class colours are overwritten at runtime
+// by applySettings() (driven by the Settings dialog). The Config defaults for
+// those are just the pre-settings starting point.
+//
+// Quantities that vary across models and are NOT in the UI:
 //   - inputHeight / inputWidth         (training resolution, usually 640)
 //   - numClasses                       (must match output0's [4+nc+nm] axis)
 //   - numMaskCoeffs                    (must match output1's channel count)
 //   - mean / std_                      (preprocessing -- YOLO defaults are 0/1)
-//   - confidenceThreshold              (default 0.25 = YOLOv8 default)
-//   - nmsIoUThreshold                  (default 0.7  = YOLOv8 default)
-//   - maskThreshold                    (default 0.5  = standard binarisation)
-//   - classes[].name / .color          (legend + overlay colors)
-//   - classes[].visible                (hide a class from the overlay)
-//
-// Quantities discovered automatically from the model after loadModel():
-//   - input/output names (read from the ONNX graph; Config has no defaults
-//     for these -- OnnxRunner uses whatever the graph declares)
+//   - nmsIoUThreshold / maskThreshold
 // ===========================================================================
 
-OnnxSegmentationBackend::OnnxSegmentationBackend()
+OnnxYoloSegBackend::OnnxYoloSegBackend()
     : m_runner(std::make_unique<OnnxRunner>())
 {
 }
 
-OnnxSegmentationBackend::~OnnxSegmentationBackend() = default;
+OnnxYoloSegBackend::~OnnxYoloSegBackend() = default;
 
-void OnnxSegmentationBackend::setConfig(const Config &cfg)
+void OnnxYoloSegBackend::setConfig(const Config &cfg)
 {
     m_cfg = cfg;
 }
 
-void OnnxSegmentationBackend::setOverlayOpacity(double opacity)
+void OnnxYoloSegBackend::applySettings(const InferenceSettings &settings)
 {
-    m_opacity = std::clamp(opacity, 0.0, 1.0);
+    m_opacity = std::clamp(settings.overlayOpacity, 0.0, 1.0);
+    m_cfg.confidenceThreshold = settings.confidenceThreshold;
+    // Map the shared two-colour palette onto our class styles.
+    for (int i = 0; i < 2 && i < static_cast<int>(m_cfg.classes.size()); ++i) {
+        m_cfg.classes[static_cast<size_t>(i)].color = settings.classColors[static_cast<size_t>(i)];
+    }
 }
 
-bool OnnxSegmentationBackend::isReady() const
+bool OnnxYoloSegBackend::isReady() const
 {
     return m_runner && m_runner->isLoaded();
 }
 
-bool OnnxSegmentationBackend::loadModel(const QString &path)
+bool OnnxYoloSegBackend::loadModel(const QString &path)
 {
     m_lastError.clear();
     if (!m_runner->loadModel(path)) {
@@ -58,7 +59,7 @@ bool OnnxSegmentationBackend::loadModel(const QString &path)
         return false;
     }
 
-    qDebug() << "[OnnxSegmentationBackend] ready. inputHW="
+    qDebug() << "[OnnxYoloSegBackend] ready. inputHW="
              << m_cfg.inputHeight << "x" << m_cfg.inputWidth
              << "classes=" << m_cfg.numClasses
              << "maskCoeffs=" << m_cfg.numMaskCoeffs;
@@ -68,7 +69,7 @@ bool OnnxSegmentationBackend::loadModel(const QString &path)
 // ---------------------------------------------------------------------------
 // Preprocessing: QImage -> NCHW float buffer
 // ---------------------------------------------------------------------------
-void OnnxSegmentationBackend::buildInputTensor(const QImage &input)
+void OnnxYoloSegBackend::buildInputTensor(const QImage &input)
 {
     const int H = m_cfg.inputHeight;
     const int W = m_cfg.inputWidth;
@@ -110,12 +111,12 @@ void OnnxSegmentationBackend::buildInputTensor(const QImage &input)
 // ---------------------------------------------------------------------------
 // Postprocessing step 1: decode YOLOv8 output0 -> candidate detections, NMS
 // ---------------------------------------------------------------------------
-std::vector<OnnxSegmentationBackend::Detection>
-OnnxSegmentationBackend::decodeAndNms(const OnnxRunner::TensorView &output0) const
+std::vector<OnnxYoloSegBackend::Detection>
+OnnxYoloSegBackend::decodeAndNms(const OnnxRunner::TensorView &output0) const
 {
     // Expected: [1, 4+nc+nm, A]  e.g. [1, 38, 8400] for nc=2, nm=32.
     if (output0.shape.size() != 3 || output0.shape[0] != 1) {
-        qWarning() << "[OnnxSegmentationBackend] output0 has unexpected shape:"
+        qWarning() << "[OnnxYoloSegBackend] output0 has unexpected shape:"
                    << output0.shape;
         return {};
     }
@@ -124,7 +125,7 @@ OnnxSegmentationBackend::decodeAndNms(const OnnxRunner::TensorView &output0) con
     const int anchors  = static_cast<int>(output0.shape[2]);
     const int expectedChannels = 4 + m_cfg.numClasses + m_cfg.numMaskCoeffs;
     if (channels != expectedChannels) {
-        qWarning() << "[OnnxSegmentationBackend] output0 channels =" << channels
+        qWarning() << "[OnnxYoloSegBackend] output0 channels =" << channels
                    << "but Config expects 4 + numClasses + numMaskCoeffs ="
                    << expectedChannels;
         return {};
@@ -195,7 +196,7 @@ OnnxSegmentationBackend::decodeAndNms(const OnnxRunner::TensorView &output0) con
 
     static quint64 s_logCount = 0;
     if ((s_logCount++ % 30) == 0) {
-        qDebug() << "[OnnxSegmentationBackend] decoded"
+        qDebug() << "[OnnxYoloSegBackend] decoded"
                  << candidates.size() << "above-threshold,"
                  << survivors.size() << "after NMS";
     }
@@ -203,7 +204,7 @@ OnnxSegmentationBackend::decodeAndNms(const OnnxRunner::TensorView &output0) con
     return survivors;
 }
 
-float OnnxSegmentationBackend::iou(const Detection &a, const Detection &b)
+float OnnxYoloSegBackend::iou(const Detection &a, const Detection &b)
 {
     const float ix1 = std::max(a.x1, b.x1);
     const float iy1 = std::max(a.y1, b.y1);
@@ -222,14 +223,14 @@ float OnnxSegmentationBackend::iou(const Detection &a, const Detection &b)
 // Postprocessing step 2: per-detection mask = sigmoid(coeffs @ prototypes)
 // Paint each binarised mask onto a display-size ARGB canvas, cropped to bbox.
 // ---------------------------------------------------------------------------
-QImage OnnxSegmentationBackend::buildMaskImage(
+QImage OnnxYoloSegBackend::buildMaskImage(
     const std::vector<Detection> &dets,
     const OnnxRunner::TensorView &output1,
     QSize displaySize) const
 {
     // Expected: [1, nm, ph, pw]  e.g. [1, 32, 160, 160].
     if (output1.shape.size() != 4 || output1.shape[0] != 1) {
-        qWarning() << "[OnnxSegmentationBackend] output1 has unexpected shape:"
+        qWarning() << "[OnnxYoloSegBackend] output1 has unexpected shape:"
                    << output1.shape;
         return QImage();
     }
@@ -237,7 +238,7 @@ QImage OnnxSegmentationBackend::buildMaskImage(
     const int ph = static_cast<int>(output1.shape[2]);
     const int pw = static_cast<int>(output1.shape[3]);
     if (nm != m_cfg.numMaskCoeffs) {
-        qWarning() << "[OnnxSegmentationBackend] output1 channels =" << nm
+        qWarning() << "[OnnxYoloSegBackend] output1 channels =" << nm
                    << "but numMaskCoeffs =" << m_cfg.numMaskCoeffs;
         return QImage();
     }
@@ -263,7 +264,7 @@ QImage OnnxSegmentationBackend::buildMaskImage(
         if (d.classId < 0 || d.classId >= static_cast<int>(m_cfg.classes.size())) {
             continue;
         }
-        const ClassStyle &cs = m_cfg.classes[d.classId];
+        const ClassStyle &cs = m_cfg.classes[static_cast<size_t>(d.classId)];
         if (!cs.visible) continue;
 
         // matmul: instMask = sigmoid( sum_k coeff[k] * proto[k, :, :] )
@@ -271,9 +272,9 @@ QImage OnnxSegmentationBackend::buildMaskImage(
             for (int x = 0; x < pw; ++x) {
                 float sum = 0.f;
                 for (int k = 0; k < nm; ++k) {
-                    sum += d.maskCoeffs[k] * proto(k, y, x);
+                    sum += d.maskCoeffs[static_cast<size_t>(k)] * proto(k, y, x);
                 }
-                instMask[y * pw + x] = 1.f / (1.f + std::exp(-sum));   // sigmoid
+                instMask[static_cast<size_t>(y * pw + x)] = 1.f / (1.f + std::exp(-sum));
             }
         }
 
@@ -311,7 +312,7 @@ QImage OnnxSegmentationBackend::buildMaskImage(
             for (int dx = dx1; dx < dx2; ++dx) {
                 const int mx = std::min(mx2 - 1,
                     mx1 + static_cast<int>((dx - dx1) * maskW / dispW));
-                if (instMask[my * pw + mx] >= m_cfg.maskThreshold) {
+                if (instMask[static_cast<size_t>(my * pw + mx)] >= m_cfg.maskThreshold) {
                     outLine[dx] = classRgb;
                 }
             }
@@ -321,7 +322,7 @@ QImage OnnxSegmentationBackend::buildMaskImage(
     return mask;
 }
 
-QImage OnnxSegmentationBackend::compositeOverlay(
+QImage OnnxYoloSegBackend::compositeOverlay(
     const QImage &original,
     const QImage &mask) const
 {
@@ -336,7 +337,7 @@ QImage OnnxSegmentationBackend::compositeOverlay(
     return result;
 }
 
-QImage OnnxSegmentationBackend::infer(const QImage &input)
+QImage OnnxYoloSegBackend::infer(const QImage &input)
 {
     m_lastError.clear();
     if (!isReady()) {

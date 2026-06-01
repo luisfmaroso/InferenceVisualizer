@@ -11,14 +11,19 @@ target_sources(InferenceVisualizer PRIVATE
     media/VideoController.h
     media/VideoController.cpp
     inference/IInferenceBackend.h
+    inference/InferenceSettings.h
     inference/OnnxRunner.h
     inference/OnnxRunner.cpp
-    inference/OnnxSegmentationBackend.h
-    inference/OnnxSegmentationBackend.cpp
+    inference/OnnxYoloSegBackend.h
+    inference/OnnxYoloSegBackend.cpp
+    inference/OnnxUnetBackend.h
+    inference/OnnxUnetBackend.cpp
     ui/ImageView.h
     ui/ImageView.cpp
     ui/VideoControls.h
     ui/VideoControls.cpp
+    ui/SettingsDialog.h
+    ui/SettingsDialog.cpp
 )
 
 target_include_directories(InferenceVisualizer PRIVATE

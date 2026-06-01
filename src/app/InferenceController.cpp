@@ -1,27 +1,39 @@
 #include "app/InferenceController.h"
 #include "inference/IInferenceBackend.h"
+#include "inference/OnnxUnetBackend.h"
+#include "inference/OnnxYoloSegBackend.h"
 
+#include <QColor>
 #include <QDebug>
 #include <QElapsedTimer>
 #include <QFileInfo>
 #include <QMetaObject>
+#include <QSettings>
 
 #include <utility>
 
-InferenceController::InferenceController(
-    std::unique_ptr<IInferenceBackend> backend,
-    QObject *parent)
+InferenceController::InferenceController(QObject *parent)
     : QObject(parent)
-    , m_backend(std::move(backend))
 {
-    // The backend has its own default opacity. Make sure it matches whatever
-    // value our UI is going to show as the initial position.
+    loadPersistedSettings();                  // QSettings -> m_settings / m_modelType
+    m_backend = makeBackend(m_modelType);
     if (m_backend) {
-        m_backend->setOverlayOpacity(0.5);
+        m_backend->applySettings(m_settings); // seed the fresh backend
     }
 }
 
 InferenceController::~InferenceController() = default;
+
+std::unique_ptr<IInferenceBackend> InferenceController::makeBackend(ModelType type)
+{
+    switch (type) {
+        case ModelType::Unet:
+            return std::make_unique<OnnxUnetBackend>();
+        case ModelType::YoloSeg:
+        default:
+            return std::make_unique<OnnxYoloSegBackend>();
+    }
+}
 
 bool InferenceController::isReady() const
 {
@@ -54,11 +66,78 @@ void InferenceController::loadModel(const QString &path)
     }
 }
 
-void InferenceController::setOverlayOpacity(double opacity)
+void InferenceController::applySettings(const InferenceSettings &settings)
 {
+    m_settings = settings;
     if (m_backend) {
-        m_backend->setOverlayOpacity(opacity);
+        m_backend->applySettings(m_settings);
     }
+    persistSettings();
+}
+
+void InferenceController::setModelType(ModelType type)
+{
+    if (type == m_modelType && m_backend) {
+        return;
+    }
+    m_modelType = type;
+    qDebug() << "[InferenceController] model type ->"
+             << (type == ModelType::Unet ? "UNet" : "YOLO-seg");
+
+    // Swap in a fresh backend of the new type and re-seed it with current
+    // settings. The IInferenceBackend interface is what makes this a clean
+    // one-liner -- nothing here knows the concrete class.
+    m_backend = makeBackend(m_modelType);
+    if (m_backend) {
+        m_backend->applySettings(m_settings);
+    }
+    persistSettings();
+
+    // Re-load the current model file into the new backend. The same .onnx may
+    // or may not be valid for the new family -- if not, the existing
+    // modelLoadFailed path surfaces the error in the UI (no crash).
+    if (!m_modelPath.isEmpty()) {
+        loadModel(m_modelPath);
+    }
+}
+
+void InferenceController::loadPersistedSettings()
+{
+    QSettings s;  // org + app name set in main.cpp give this a stable location
+    s.beginGroup(QStringLiteral("inference"));
+
+    m_settings.overlayOpacity =
+        s.value(QStringLiteral("overlayOpacity"), m_settings.overlayOpacity).toDouble();
+    m_settings.confidenceThreshold = static_cast<float>(
+        s.value(QStringLiteral("confidenceThreshold"),
+                m_settings.confidenceThreshold).toDouble());
+
+    const QColor c0 = s.value(QStringLiteral("classColor0"),
+                              m_settings.classColors[0]).value<QColor>();
+    const QColor c1 = s.value(QStringLiteral("classColor1"),
+                              m_settings.classColors[1]).value<QColor>();
+    if (c0.isValid()) m_settings.classColors[0] = c0;
+    if (c1.isValid()) m_settings.classColors[1] = c1;
+
+    const int typeInt = s.value(QStringLiteral("modelType"),
+                                static_cast<int>(m_modelType)).toInt();
+    m_modelType = (typeInt == static_cast<int>(ModelType::Unet))
+                      ? ModelType::Unet : ModelType::YoloSeg;
+
+    s.endGroup();
+}
+
+void InferenceController::persistSettings() const
+{
+    QSettings s;
+    s.beginGroup(QStringLiteral("inference"));
+    s.setValue(QStringLiteral("overlayOpacity"),      m_settings.overlayOpacity);
+    s.setValue(QStringLiteral("confidenceThreshold"),
+               static_cast<double>(m_settings.confidenceThreshold));
+    s.setValue(QStringLiteral("classColor0"), m_settings.classColors[0]);
+    s.setValue(QStringLiteral("classColor1"), m_settings.classColors[1]);
+    s.setValue(QStringLiteral("modelType"), static_cast<int>(m_modelType));
+    s.endGroup();
 }
 
 void InferenceController::processFrame(const QImage &input)

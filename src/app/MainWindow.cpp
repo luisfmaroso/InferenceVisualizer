@@ -1,13 +1,12 @@
 #include "app/MainWindow.h"
 
 #include "app/InferenceController.h"
-#include "inference/OnnxSegmentationBackend.h"
 #include "media/VideoController.h"
 #include "ui/ImageView.h"
+#include "ui/SettingsDialog.h"
 #include "ui/VideoControls.h"
 
 #include <QAction>
-#include <QActionGroup>
 #include <QApplication>
 #include <QDebug>
 #include <QDir>
@@ -25,17 +24,13 @@
 #include <QVBoxLayout>
 #include <QWidget>
 
-#include <memory>
-
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , m_originalView(new ImageView)         // parents set inside buildCentralWidget
     , m_processedView(new ImageView)
     , m_controls(new VideoControls)
     , m_controller(new VideoController(this))
-    , m_inference(new InferenceController(
-          std::make_unique<OnnxSegmentationBackend>(),
-          this))
+    , m_inference(new InferenceController(this))  // builds its own backend from saved settings
 {
     setWindowTitle(tr("InferenceVisualizer"));
     resize(1200, 720);
@@ -129,26 +124,11 @@ void MainWindow::buildMenus()
     connect(m_runInferenceAction, &QAction::toggled,
             m_inference, &InferenceController::setEnabled);
 
-    // Opacity submenu -- a small QActionGroup with three presets. Keeping
-    // it preset-based for step 3; a real slider is a polish item.
-    auto *opacityMenu = inferenceMenu->addMenu(tr("Mask &Opacity"));
-    auto *opacityGroup = new QActionGroup(this);
-    opacityGroup->setExclusive(true);
+    inferenceMenu->addSeparator();
 
-    const struct { QString label; double value; bool isDefault; } presets[] = {
-        {tr("25%"), 0.25, false},
-        {tr("50%"), 0.50, true},
-        {tr("75%"), 0.75, false},
-    };
-    for (const auto &p : presets) {
-        QAction *act = opacityMenu->addAction(p.label);
-        act->setCheckable(true);
-        act->setChecked(p.isDefault);
-        opacityGroup->addAction(act);
-        const double value = p.value;
-        connect(act, &QAction::triggered, this,
-                [this, value]() { m_inference->setOverlayOpacity(value); });
-    }
+    auto *settingsAction = inferenceMenu->addAction(tr("&Settings..."));
+    settingsAction->setShortcut(QKeySequence(tr("Ctrl+,")));  // conventional Settings shortcut
+    connect(settingsAction, &QAction::triggered, this, &MainWindow::openSettingsDialog);
 }
 
 void MainWindow::wireController()
@@ -227,6 +207,7 @@ void MainWindow::openImage()
     m_controller->stop();
     m_controls->setEnabledControls(false);
 
+    m_lastStill = image;   // remembered so settings changes can re-preview it
     m_originalView->setImage(image);
     // Route the still image through inference too -- the controller emits
     // a passthrough QImage when inference is disabled.
@@ -250,6 +231,7 @@ void MainWindow::openVideo()
         return;
     }
 
+    m_lastStill = QImage();   // a video is now the source, not a still
     m_controls->setEnabledControls(true);
     m_controller->play();
     statusBar()->showMessage(tr("Playing %1").arg(path), 5000);
@@ -265,6 +247,35 @@ void MainWindow::openModelDialog()
     if (path.isEmpty()) return;
 
     m_inference->loadModel(path);
+}
+
+void MainWindow::openSettingsDialog()
+{
+    SettingsDialog dialog(m_inference->currentSettings(),
+                          m_inference->currentModelType(),
+                          this);
+    // Live preview: apply immediately on the dialog's Apply/OK, even before
+    // it closes.
+    connect(&dialog, &SettingsDialog::applied,
+            this,    &MainWindow::onSettingsApplied);
+    dialog.exec();   // modal; connection dies with the dialog
+}
+
+void MainWindow::onSettingsApplied(const InferenceSettings &settings,
+                                   ModelType modelType)
+{
+    // Order matters: set the model type first (this may rebuild + reload the
+    // backend), then push the latest knob values onto whatever backend is now
+    // active.
+    m_inference->setModelType(modelType);
+    m_inference->applySettings(settings);
+
+    // Re-run inference on the current still so the processed pane reflects the
+    // change without the user reopening the file. For video, the next decoded
+    // frame already picks up the new settings.
+    if (!m_lastStill.isNull()) {
+        m_inference->processFrame(m_lastStill);
+    }
 }
 
 void MainWindow::onPlaybackStateChanged(QMediaPlayer::PlaybackState state)

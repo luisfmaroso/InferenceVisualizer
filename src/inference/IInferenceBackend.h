@@ -1,5 +1,7 @@
 #pragma once
 
+#include "inference/InferenceSettings.h"
+
 #include <QImage>
 #include <QString>
 
@@ -36,11 +38,12 @@ public:
     // anything goes wrong, returns a null QImage and sets errorString().
     virtual QImage infer(const QImage &input) = 0;
 
-    // Display-time knob the controller exposes to the UI. Each backend
-    // interprets it sensibly: segmentation uses it as the mask alpha,
-    // a future detection backend could use it for box thickness, etc.
-    // Range [0.0, 1.0]. Default is implementation-defined.
-    virtual void setOverlayOpacity(double opacity) = 0;
+    // Apply the user-tunable display/inference settings. Called whenever the
+    // Settings dialog changes something, and once right after construction so
+    // a freshly-swapped backend starts from the current settings. Each backend
+    // maps the fields it cares about onto its own internal config and may
+    // ignore the rest.
+    virtual void applySettings(const InferenceSettings &settings) = 0;
 
 protected:
     IInferenceBackend() = default;

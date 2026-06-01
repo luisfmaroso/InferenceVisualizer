@@ -17,7 +17,7 @@
   <a href="concepts.html">Qt &amp; C++ concepts &rarr;</a>
 </nav>
 
-<p class="subtitle"><strong>Snippets last verified against:</strong> Step 3 + YOLOv8 retrofit (written but unbuilt). When code changes in a future step, refresh snippets in any §5 entry referencing the modified file &mdash; each snippet's first line names its source.</p>
+<p class="subtitle"><strong>Snippets last verified against:</strong> Step 3 + Settings dialog (written but unbuilt). When code changes in a future step, refresh snippets in any §5 entry referencing the modified file &mdash; each snippet's first line names its source.</p>
 
 <nav class="toc">
   <strong>Contents</strong>
@@ -45,7 +45,7 @@
 
 <h2 id="step">2. Current step <span class="badge">Step 3 / 4</span></h2>
 <p>Step 3 introduces the inference pipeline. New <code>IInferenceBackend</code> interface lives in
-   <code>src/inference/</code>; <code>OnnxSegmentationBackend</code> implements it on top of a shared
+   <code>src/inference/</code>; <code>OnnxYoloSegBackend</code> implements it on top of a shared
    <code>OnnxRunner</code> (Microsoft's prebuilt ONNX Runtime). A new
    <code>InferenceController</code> in <code>src/app/</code> orchestrates: receives <code>QImage</code> from
    <code>VideoController</code>, dispatches to the backend, emits a processed image (mask composited over the
@@ -72,8 +72,8 @@
 &#9474;   &#9474;   &#9500;&#9472;&#9472; IInferenceBackend.h     <span class="cm"># abstract interface; any backend implements this</span>
 &#9474;   &#9474;   &#9500;&#9472;&#9472; OnnxRunner.h           <span class="cm"># thin RAII wrapper around Ort::Session</span>
 &#9474;   &#9474;   &#9500;&#9472;&#9472; OnnxRunner.cpp
-&#9474;   &#9474;   &#9500;&#9472;&#9472; OnnxSegmentationBackend.h   <span class="cm"># IInferenceBackend impl for segmentation</span>
-&#9474;   &#9474;   &#9492;&#9472;&#9472; OnnxSegmentationBackend.cpp
+&#9474;   &#9474;   &#9500;&#9472;&#9472; OnnxYoloSegBackend.h   <span class="cm"># IInferenceBackend impl for segmentation</span>
+&#9474;   &#9474;   &#9492;&#9472;&#9472; OnnxYoloSegBackend.cpp
 &#9474;   &#9500;&#9472;&#9472; media/                  <span class="cm"># Step 2: video decode/playback engine</span>
 &#9474;   &#9474;   &#9500;&#9472;&#9472; VideoController.h
 &#9474;   &#9474;   &#9492;&#9472;&#9472; VideoController.cpp
@@ -120,9 +120,9 @@
 
 <h3>Step 3</h3>
 <ul>
-  <li>New <code>IInferenceBackend</code> pure-virtual interface in <code>src/inference/</code>. Any backend (segmentation, detection, future model types) implements its four methods: <code>loadModel</code>, <code>isReady</code>, <code>infer(QImage)</code>, <code>setOverlayOpacity</code>. (See <a href="concepts.html#iinferencebackend">IInferenceBackend</a>.)</li>
+  <li>New <code>IInferenceBackend</code> pure-virtual interface in <code>src/inference/</code>. Any backend (segmentation, detection, future model types) implements its methods: <code>loadModel</code>, <code>isReady</code>, <code>infer(QImage)</code>, <code>applySettings</code>. (See <a href="concepts.html#iinferencebackend">IInferenceBackend</a>.)</li>
   <li><code>OnnxRunner</code> &mdash; thin RAII wrapper around <code>Ort::Env</code> + <code>Ort::Session</code>. PIMPL'd so the ONNX Runtime C++ header only fans out to one .cpp. Loads an <code>.onnx</code> by path (UTF-8 → wchar_t on Windows), discovers input/output names from the graph, runs a single float tensor through. Shared by any future ONNX backend. (See <a href="concepts.html#onnxrunner">OnnxRunner</a>.)</li>
-  <li><code>OnnxSegmentationBackend</code> implements <code>IInferenceBackend</code> for semantic-segmentation models. Resizes <code>QImage</code> to model input size, builds an <code>NCHW</code> float buffer with ImageNet normalization, runs through <code>OnnxRunner</code>, argmaxes the output over the channel axis, builds a colored class mask, composites it onto a copy of the original with <code>QPainter</code>. Per-class colors and visibility are configurable; defaults match a 2-class corrosion model (not-critical = dim yellow, critical = bold red). (See <a href="concepts.html#segmentation-backend">OnnxSegmentationBackend</a>, <a href="concepts.html#qpainter-overlay">QPainter overlays</a>.)</li>
+  <li><code>OnnxYoloSegBackend</code> implements <code>IInferenceBackend</code> for semantic-segmentation models. Resizes <code>QImage</code> to model input size, builds an <code>NCHW</code> float buffer with ImageNet normalization, runs through <code>OnnxRunner</code>, argmaxes the output over the channel axis, builds a colored class mask, composites it onto a copy of the original with <code>QPainter</code>. Per-class colors and visibility are configurable; defaults match a 2-class corrosion model (not-critical = dim yellow, critical = bold red). (See <a href="concepts.html#segmentation-backend">OnnxYoloSegBackend</a>, <a href="concepts.html#qpainter-overlay">QPainter overlays</a>.)</li>
   <li><code>InferenceController</code> in <code>src/app/</code>: <code>QObject</code> orchestrator. Owns the backend via <code>std::unique_ptr&lt;IInferenceBackend&gt;</code>. Receives <code>QImage</code> frames, runs inference if enabled, emits <code>processedFrameReady</code>. Passthrough when disabled — keeps the dual-pane mirroring working without code branches in <code>MainWindow</code>. (See <a href="concepts.html#inference-controller">InferenceController</a>.)</li>
   <li>New <em>Inference</em> menu in <code>MainWindow</code>: <em>Load Model&hellip;</em> (Ctrl+M), <em>Run Inference</em> toggle (Ctrl+R, disabled until a model loads), <em>Mask Opacity</em> submenu (25 / 50 / 75% presets).</li>
   <li>Right-pane wiring rewritten: instead of two direct <code>connect(frameReady, ImageView::setImage)</code> calls, the right pane now goes through <code>InferenceController</code>. Step 2's "both panes mirror" behavior is preserved by the controller emitting passthrough when inference is off.</li>
@@ -347,7 +347,7 @@ public:
     virtual bool    isReady() const = 0;
     virtual QString errorString() const = 0;
     virtual QImage  infer(const QImage &amp;input) = 0;
-    virtual void    setOverlayOpacity(double opacity) = 0;
+    virtual void    applySettings(const InferenceSettings &amp;settings) = 0;
 };</code></pre>
 
 <h3>5.11 Why mask compositing lives in the backend, not the controller</h3>
@@ -358,8 +358,8 @@ public:
    need a discriminated union of result types and a switch over kinds. By making "render to a
    <code>QImage</code>" part of the backend's contract, the controller stays one signal in, one signal
    out, regardless of which model is loaded.</p>
-<pre><code><span class="c">// src/inference/OnnxSegmentationBackend.cpp &mdash; backend does the QPainter composite itself</span>
-QImage OnnxSegmentationBackend::compositeOverlay(
+<pre><code><span class="c">// src/inference/OnnxYoloSegBackend.cpp &mdash; backend does the QPainter composite itself</span>
+QImage OnnxYoloSegBackend::compositeOverlay(
     const QImage &amp;original,
     const QImage &amp;mask) const
 {
@@ -378,11 +378,11 @@ QImage OnnxSegmentationBackend::compositeOverlay(
 <p>Loading a <code>.onnx</code>, managing the <code>Ort::Env</code> + <code>Ort::Session</code> lifetime, the
    Windows-specific wchar_t path conversion, the input/output name discovery, the float-tensor packing for
    <code>Ort::Value</code> &mdash; all of that is identical for every ONNX-based backend. Putting it inside
-   <code>OnnxSegmentationBackend</code> would be fine today; tomorrow, when an <code>OnnxDetectionBackend</code>
+   <code>OnnxYoloSegBackend</code> would be fine today; tomorrow, when an <code>OnnxDetectionBackend</code>
    lands, we'd either duplicate the code or extract it then. Doing the extraction now means the second
    backend only writes its own pre/post-processing, not 60 lines of ORT plumbing again.</p>
-<pre><code><span class="c">// src/inference/OnnxSegmentationBackend.h &mdash; backend owns a runner, isn't one</span>
-class OnnxSegmentationBackend : public IInferenceBackend
+<pre><code><span class="c">// src/inference/OnnxYoloSegBackend.h &mdash; backend owns a runner, isn't one</span>
+class OnnxYoloSegBackend : public IInferenceBackend
 {
     <span class="c">// ...</span>
 private:
@@ -500,7 +500,39 @@ struct OnnxRunner::Impl {
     std::vector&lt;Ort::Value&gt;           lastOutputs;
 };</code></pre>
 
-<h3>5.16 Inline code snippets in both docs</h3>
+<h3>5.16 Settings dialog, <code>applySettings</code>, and the backend swap</h3>
+<p>The Inference &rarr; Settings&hellip; dialog exposes mask opacity, confidence threshold, the two class
+   colours, and the model family (YOLO-seg / UNet). Three design choices keep it clean:</p>
+<ul>
+  <li><strong>One settings struct, not many setters.</strong> A new <code>InferenceSettings</code> POD
+      carries the knobs; the interface gains a single <code>applySettings(const InferenceSettings&amp;)</code>
+      (replacing the old <code>setOverlayOpacity</code>). Adding a future knob is a struct field, not a
+      breaking interface change. See <a href="concepts.html#applysettings">applySettings &amp; interface
+      evolution</a>.</li>
+  <li><strong>The backend swap rides the existing interface.</strong> Picking UNet calls
+      <code>InferenceController::setModelType</code>, which builds the matching backend via a factory,
+      re-seeds it with current settings, and reloads the model file &mdash; no model-kind branching leaks
+      into <code>MainWindow</code> or the frame pipeline. See <a href="concepts.html#backend-swap">runtime
+      backend swap</a>.</li>
+  <li><strong>The dialog stays decoupled.</strong> It emits <code>applied(settings, modelType)</code>;
+      <code>MainWindow</code> forwards to the controller and re-runs inference on the last still for instant
+      preview. Same "widget emits intent" pattern as the video controls. See
+      <a href="concepts.html#settings-dialog">the Settings dialog</a>.</li>
+</ul>
+<pre><code><span class="c">// src/app/MainWindow.cpp &mdash; apply settings live, re-preview the current still</span>
+void MainWindow::onSettingsApplied(const InferenceSettings &amp;settings,
+                                   ModelType modelType)
+{
+    m_inference-&gt;setModelType(modelType);   <span class="c">// may rebuild + reload backend</span>
+    m_inference-&gt;applySettings(settings);   <span class="c">// push knobs onto active backend</span>
+    if (!m_lastStill.isNull())
+        m_inference-&gt;processFrame(m_lastStill);  <span class="c">// instant preview, no reopen</span>
+}</code></pre>
+<p>Settings persist across launches via <code>QSettings</code> (loaded in the controller's constructor,
+   saved on every change). See <a href="concepts.html#qsettings">persistence with QSettings</a>. The old
+   Mask Opacity preset submenu is removed &mdash; the dialog supersedes it.</p>
+
+<h3>5.17 Inline code snippets in both docs</h3>
 <p>Every architectural decision in this file's &sect;5 and every code-shaped concept in
    <a href="concepts.html">concepts.html</a> now carries an actual code snippet pulled from the project
    &mdash; not just a <code>src/file:line</code> pointer. Reading either doc without the code in front of
@@ -628,11 +660,11 @@ LD_LIBRARY_PATH=~/onnxruntime/lib:$LD_LIBRARY_PATH \
 <ul>
   <li><del><strong>Step 2:</strong> dual-pane <code>QSplitter</code>, video pipeline, play/pause controls.</del> &mdash; landed.</li>
   <li><del><strong>Step 3:</strong> YOLO inference backend.</del> Replaced by the unified ONNX Runtime backend (still Step 3) since the user converts all models to ONNX.</li>
-  <li><del><strong>Step 4:</strong> UNet segmentation backend.</del> Absorbed into Step 3; <code>OnnxSegmentationBackend</code> handles the corrosion model.</li>
+  <li><del><strong>Step 4:</strong> UNet segmentation backend.</del> Absorbed into Step 3; <code>OnnxYoloSegBackend</code> handles the corrosion model.</li>
   <li><del><strong>Step 5:</strong> ONNX Runtime as a generic backend.</del> Done in Step 3 (<code>OnnxRunner</code>).</li>
   <li><strong>Step 4 (formerly Step 6) &mdash; polish:</strong> worker-thread inference (<code>QueuedConnection</code> across threads, drop frames when behind), GPU execution providers, drag-and-drop file open, recent-files menu, FPS counter overlay, output-video recording, settings dialog, plugin discovery for models.</li>
   <li><strong>Polish backlog</strong> (not blocking any step): audio output (<code>QAudioOutput</code>) for video, volume slider, frame-step buttons, fullscreen toggle, restore last-used directory in file dialogs, class-toggle UI to hide "not-critical" so the eye snaps to critical regions, letterbox preprocessing (preserve input aspect ratio; current stretch-to-fit slightly degrades accuracy on non-square images).</li>
-  <li><strong>Generic any-ONNX-model loader</strong> (user request): the current <code>OnnxSegmentationBackend</code> is hard-coded for YOLOv8 instance-segmentation format. A pure semantic-segmentation model (UNet, DeepLab; output <code>[1, C, H, W]</code>) or a pure detection model (YOLO without seg) would need a different backend. Future work: inspect the loaded model's output shapes and auto-pick the right backend (one per architecture family). Probably means splitting the current file into <code>OnnxYoloSegBackend</code>, <code>OnnxSemanticSegBackend</code>, <code>OnnxDetectionBackend</code> and adding a small "router" in <code>InferenceController</code>.</li>
+  <li><strong>Generic any-ONNX-model loader</strong> (user request): the current <code>OnnxYoloSegBackend</code> is hard-coded for YOLOv8 instance-segmentation format. A pure semantic-segmentation model (UNet, DeepLab; output <code>[1, C, H, W]</code>) or a pure detection model (YOLO without seg) would need a different backend. Future work: inspect the loaded model's output shapes and auto-pick the right backend (one per architecture family). Probably means splitting the current file into <code>OnnxYoloSegBackend</code>, <code>OnnxSemanticSegBackend</code>, <code>OnnxDetectionBackend</code> and adding a small "router" in <code>InferenceController</code>.</li>
 </ul>
 
 <h2 id="changelog">8. Changelog</h2>
@@ -642,10 +674,11 @@ LD_LIBRARY_PATH=~/onnxruntime/lib:$LD_LIBRARY_PATH \
   <li><strong>2026-05-19 &mdash; Docs split.</strong> Separated the single learning log into a project doc (this file) and a topic-organized Qt &amp; C++ concepts tutorial (<a href="concepts.html">concepts.html</a>). Extracted shared CSS into <code>docs/style.css</code>.</li>
   <li><strong>2026-05-19 &mdash; Inline snippets in concepts doc.</strong> Every code-shaped entry in <code>concepts.html</code> now carries an actual snippet from the project with a source-file caption on its first line. <code>src/file:line</code> pointers remain as "jump to full context" refs below each snippet. Added a "Snippets last verified against: Step N" stamp near the top.</li>
   <li><strong>2026-05-19 &mdash; Inline snippets in project doc too.</strong> Each architectural decision in &sect;5 now carries the code it embodies. Same format and caption convention as <code>concepts.html</code>, same "Snippets last verified" stamp near the top. Per-step snippet-refresh discipline applies to both files: grep for the modified source path in <em>both</em> HTML files, refresh every match, bump both stamps.</li>
-  <li><strong>2026-05-19 &mdash; Step 3 + roadmap restructure.</strong> Inference pipeline landed: <code>IInferenceBackend</code> interface (<code>src/inference/IInferenceBackend.h</code>), shared <code>OnnxRunner</code> (RAII over <code>Ort::Env</code> + <code>Ort::Session</code>, PIMPL'd), <code>OnnxSegmentationBackend</code>, <code>InferenceController</code> (passthrough-when-disabled orchestrator). New <em>Inference</em> menu in <code>MainWindow</code>: <em>Load Model</em> (Ctrl+M), <em>Run Inference</em> toggle (Ctrl+R), <em>Mask Opacity</em> presets. Right pane rewired to go through <code>InferenceController</code> instead of directly from <code>VideoController</code>. CMake gains ONNX Runtime via prebuilt zip from Microsoft (extracted to <code>C:\Tools\onnxruntime</code>); post-build step copies <code>onnxruntime.dll</code> next to the .exe. <code>.gitignore</code> excludes <code>models/</code>. <code>.vscode/launch.json</code> adds the ORT lib dir to the debug-launch PATH. <strong>Roadmap restructured</strong>: original Steps 3 (YOLO), 4 (UNet), 5 (ONNX backend) collapse into this single Step 3 since the user converts every model to ONNX. What was Step 6 (polish) becomes the new Step 4. Threading limitation explicit: inference runs on GUI thread; videos hitch &mdash; Step 4 (polish) target.</li>
+  <li><strong>2026-05-19 &mdash; Step 3 + roadmap restructure.</strong> Inference pipeline landed: <code>IInferenceBackend</code> interface (<code>src/inference/IInferenceBackend.h</code>), shared <code>OnnxRunner</code> (RAII over <code>Ort::Env</code> + <code>Ort::Session</code>, PIMPL'd), <code>OnnxYoloSegBackend</code>, <code>InferenceController</code> (passthrough-when-disabled orchestrator). New <em>Inference</em> menu in <code>MainWindow</code>: <em>Load Model</em> (Ctrl+M), <em>Run Inference</em> toggle (Ctrl+R), <em>Mask Opacity</em> presets. Right pane rewired to go through <code>InferenceController</code> instead of directly from <code>VideoController</code>. CMake gains ONNX Runtime via prebuilt zip from Microsoft (extracted to <code>C:\Tools\onnxruntime</code>); post-build step copies <code>onnxruntime.dll</code> next to the .exe. <code>.gitignore</code> excludes <code>models/</code>. <code>.vscode/launch.json</code> adds the ORT lib dir to the debug-launch PATH. <strong>Roadmap restructured</strong>: original Steps 3 (YOLO), 4 (UNet), 5 (ONNX backend) collapse into this single Step 3 since the user converts every model to ONNX. What was Step 6 (polish) becomes the new Step 4. Threading limitation explicit: inference runs on GUI thread; videos hitch &mdash; Step 4 (polish) target.</li>
   <li><strong>2026-05-19 &mdash; Hardcoded model auto-load.</strong> <code>MainWindow::tryAutoLoadModel()</code> runs at construction-time and loads <code>model_tcc.onnx</code> from the same directory as the executable (<code>QApplication::applicationDirPath()</code>). If found, the Run Inference action is auto-toggled on so the user gets results on the first frame. If absent, status bar reports and the menu stays available for manual selection. No CLI args supported.</li>
+  <li><strong>2026-05-19 &mdash; Inference Settings dialog + UNet backend.</strong> New <em>Inference &rarr; Settings&hellip;</em> (Ctrl+,) opens a modal <code>SettingsDialog</code> (<code>src/ui/SettingsDialog.{h,cpp}</code>) for mask opacity, confidence threshold (0.01 step), the two class colours (default green=class 0, red=class 1), and the model family. Introduced a shared <code>InferenceSettings</code> struct + <code>ModelType</code> enum (<code>src/inference/InferenceSettings.h</code>); <code>IInferenceBackend</code> swapped <code>setOverlayOpacity</code> for a generic <code>applySettings(const InferenceSettings&amp;)</code>. Renamed <code>OnnxSegmentationBackend</code> &rarr; <code>OnnxYoloSegBackend</code> and added a sibling <code>OnnxUnetBackend</code> (single <code>[1,C,H,W]</code> output, per-pixel argmax + softmax-probability floor, colored mask composite). <code>InferenceController</code> gained settings/model-type state, a <code>makeBackend</code> factory, a <code>setModelType</code> swap-and-reload path, and <code>QSettings</code> persistence (org name added in <code>main.cpp</code>). <code>MainWindow</code> dropped the Mask Opacity submenu, wired the dialog with live preview on the last still image. CMake updated for the renamed/new sources. Settings survive restarts. <em>Note:</em> <code>InferenceSettings</code> defaults confidence to 0.25; the corrosion model wanted ~0.05 &mdash; set it once in the dialog and it persists.</li>
   <li><strong>2026-05-19 &mdash; Cross-platform (Ubuntu) build support.</strong> Project now configures and builds on Linux from the same source tree. <code>CMakeLists.txt</code> picks <code>ONNXRUNTIME_DIR</code> default per OS (Windows: <code>C:/Tools/onnxruntime</code>, others: <code>$HOME/onnxruntime</code>), overridable via <code>-DONNXRUNTIME_DIR=...</code>. <code>src/CMakeLists.txt</code> only post-build-copies <code>onnxruntime.dll</code> on Windows; on Linux <code>LD_LIBRARY_PATH</code> handles discovery. <code>.vscode/launch.json</code> now has two configurations side-by-side &mdash; <em>"Debug Qt Application (GDB/MinGW, Windows)"</em> and <em>"Debug Qt Application (GDB, Linux)"</em> &mdash; pick from VS Code's launch dropdown. New §6.4 in build instructions covers the Ubuntu setup: apt packages (<code>qt6-base-dev qt6-multimedia-dev</code>), ORT prebuilt tgz extraction to <code>~/onnxruntime</code>, model file placement next to the .exe (same as Windows). No C++ source changes &mdash; <code>OnnxRunner</code>'s wchar_t-vs-char path conversion was already <code>#ifdef _WIN32</code>-aware from the start.</li>
-  <li><strong>2026-05-19 &mdash; YOLOv8 segmentation retrofit.</strong> Netron inspection revealed the user's converted model is YOLOv8 instance-segmentation, not pure semantic-segmentation: inputs <code>images: float32[1,3,640,640]</code>; outputs <code>output0: float32[1,38,8400]</code> (4 box + 2 classes + 32 mask coeffs over 8400 anchors) and <code>output1: float32[1,32,160,160]</code> (mask prototypes). <code>OnnxRunner</code> refactored to support multi-output models (singular <code>inputName</code>/<code>outputName</code> → vector <code>inputNames</code>/<code>outputNames</code>; <code>run()</code> returns <code>std::vector&lt;TensorView&gt;</code>). <code>OnnxSegmentationBackend</code> post-processing entirely rewritten: confidence filter + class-aware NMS over candidate detections + per-surviving-detection mask via <code>sigmoid(coeffs &middot; prototypes)</code> + nearest-neighbour paint inside bbox at display resolution. Default Config now matches YOLO conventions: <code>640&times;640</code> input, no normalization (raw <code>[0, 1]</code> floats), confidence 0.25, NMS IoU 0.7, mask threshold 0.5. Class colors unchanged (not-critical = dim yellow, critical = bold red). Added "generic any-ONNX-model loader" to future improvements per user request.</li>
+  <li><strong>2026-05-19 &mdash; YOLOv8 segmentation retrofit.</strong> Netron inspection revealed the user's converted model is YOLOv8 instance-segmentation, not pure semantic-segmentation: inputs <code>images: float32[1,3,640,640]</code>; outputs <code>output0: float32[1,38,8400]</code> (4 box + 2 classes + 32 mask coeffs over 8400 anchors) and <code>output1: float32[1,32,160,160]</code> (mask prototypes). <code>OnnxRunner</code> refactored to support multi-output models (singular <code>inputName</code>/<code>outputName</code> → vector <code>inputNames</code>/<code>outputNames</code>; <code>run()</code> returns <code>std::vector&lt;TensorView&gt;</code>). <code>OnnxYoloSegBackend</code> post-processing entirely rewritten: confidence filter + class-aware NMS over candidate detections + per-surviving-detection mask via <code>sigmoid(coeffs &middot; prototypes)</code> + nearest-neighbour paint inside bbox at display resolution. Default Config now matches YOLO conventions: <code>640&times;640</code> input, no normalization (raw <code>[0, 1]</code> floats), confidence 0.25, NMS IoU 0.7, mask threshold 0.5. Class colors unchanged (not-critical = dim yellow, critical = bold red). Added "generic any-ONNX-model loader" to future improvements per user request.</li>
 </ul>
 
 <hr />

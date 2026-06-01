@@ -1,5 +1,8 @@
 #pragma once
 
+#include "inference/InferenceSettings.h"
+
+#include <QImage>
 #include <QMainWindow>
 #include <QMediaPlayer>
 
@@ -25,6 +28,8 @@ private slots:
     void openImage();
     void openVideo();
     void openModelDialog();
+    void openSettingsDialog();
+    void onSettingsApplied(const InferenceSettings &settings, ModelType modelType);
     void onPlaybackStateChanged(QMediaPlayer::PlaybackState state);
     void onMediaError(const QString &message);
     void onModelLoaded(const QString &path);
@@ -55,4 +60,9 @@ private:
     // inference has backpressure) vs. by the user. We only auto-resume
     // pauses WE initiated; the user's pauses are honoured.
     bool     m_pausedByBackpressure = false;
+
+    // The most recent still image opened via File -> Open Image. Re-fed to the
+    // inference controller after a settings change so the processed pane
+    // updates live without reopening the file. Null while a video is active.
+    QImage   m_lastStill;
 };

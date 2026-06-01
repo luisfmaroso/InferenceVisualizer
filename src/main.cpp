@@ -67,6 +67,7 @@ void installFileLogger()
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
+    QApplication::setOrganizationName("InferenceVisualizer");
     QApplication::setApplicationName("InferenceVisualizer");
     QApplication::setApplicationVersion("0.1.0");
 
