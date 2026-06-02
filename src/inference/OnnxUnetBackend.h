@@ -75,6 +75,9 @@ private:
     QImage buildMaskImage(const OnnxRunner::TensorView &output,
                           QSize displaySize) const;
     QImage compositeOverlay(const QImage &original, const QImage &mask) const;
+    // Draw a single "NN%" chip at the top-left showing the mean confidence of
+    // the painted (foreground) pixels from the most recent buildMaskImage().
+    void   drawMeanConfidenceChip(QImage &canvas) const;
 
     Config                       m_cfg;
     std::unique_ptr<OnnxRunner>  m_runner;
@@ -82,4 +85,9 @@ private:
     QString                      m_lastError;
     double                       m_opacity = 0.5;
     float                        m_probFloor = 0.25f;  // from confidenceThreshold
+
+    // Stats cached by buildMaskImage() for the confidence chip. Mutable so the
+    // const builder can record them; read by drawMeanConfidenceChip().
+    mutable float m_lastMeanConf  = 0.0f;   // mean softmax prob over foreground
+    mutable int   m_lastChipClass = -1;     // dominant visible class (-1 = none)
 };

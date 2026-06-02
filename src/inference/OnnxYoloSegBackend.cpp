@@ -1,7 +1,10 @@
 #include "inference/OnnxYoloSegBackend.h"
 
 #include <QDebug>
+#include <QFont>
+#include <QFontMetrics>
 #include <QPainter>
+#include <QRect>
 
 #include <algorithm>
 #include <cmath>
@@ -337,6 +340,61 @@ QImage OnnxYoloSegBackend::compositeOverlay(
     return result;
 }
 
+// ---------------------------------------------------------------------------
+// Draw a "NN%" confidence chip at each detection. Done AFTER compositing so
+// the text sits at full opacity (the mask alpha doesn't fade the numbers) and
+// at display resolution (so the text is crisp, not scaled with the mask).
+// ---------------------------------------------------------------------------
+void OnnxYoloSegBackend::drawConfidenceChips(
+    QImage &canvas,
+    const std::vector<Detection> &dets,
+    QSize displaySize) const
+{
+    const float toDispX = static_cast<float>(displaySize.width())  / m_cfg.inputWidth;
+    const float toDispY = static_cast<float>(displaySize.height()) / m_cfg.inputHeight;
+
+    QPainter painter(&canvas);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+
+    QFont font = painter.font();
+    // Scale the text to the image so it's legible on big frames and not huge
+    // on small ones. Clamped to a sensible minimum.
+    font.setPointSizeF(std::max(9.0, displaySize.height() / 55.0));
+    font.setBold(true);
+    painter.setFont(font);
+    const QFontMetrics fm(font);
+
+    for (const Detection &d : dets) {
+        if (d.classId < 0 || d.classId >= static_cast<int>(m_cfg.classes.size())) {
+            continue;
+        }
+        const ClassStyle &cs = m_cfg.classes[static_cast<size_t>(d.classId)];
+        if (!cs.visible) continue;
+
+        const int pct = static_cast<int>(std::lround(d.score * 100.0f));
+        const QString text = QStringLiteral("%1%").arg(pct);
+
+        const int padX = 4;
+        const int padY = 2;
+        const QSize textSize = fm.size(Qt::TextSingleLine, text);
+        QRect chip(0, 0, textSize.width() + 2 * padX, textSize.height() + 2 * padY);
+
+        // Anchor at the detection's top-left in display coords, kept on-screen.
+        int x = static_cast<int>(d.x1 * toDispX);
+        int y = static_cast<int>(d.y1 * toDispY);
+        x = std::clamp(x, 0, std::max(0, displaySize.width()  - chip.width()));
+        y = std::clamp(y, 0, std::max(0, displaySize.height() - chip.height()));
+        chip.moveTo(x, y);
+
+        // Filled background in the class colour (opaque), white text on top.
+        painter.fillRect(chip, QColor(cs.color.red(), cs.color.green(), cs.color.blue()));
+        painter.setPen(Qt::white);
+        painter.drawText(chip, Qt::AlignCenter, text);
+    }
+
+    painter.end();
+}
+
 QImage OnnxYoloSegBackend::infer(const QImage &input)
 {
     m_lastError.clear();
@@ -363,12 +421,20 @@ QImage OnnxYoloSegBackend::infer(const QImage &input)
         return QImage();
     }
 
-    const auto dets = decodeAndNms(outputs[0]);
-    if (dets.empty()) {
+    const auto allDets = decodeAndNms(outputs[0]);
+    if (allDets.empty()) {
         // Nothing above the confidence threshold -- not an error, just no
         // overlay. Return the original so the right pane shows it cleanly.
         return input;
     }
+
+    // Show only the single most-confident detection: its mask and its "NN%"
+    // chip. (decodeAndNms already sorts by score, so this is usually the
+    // front element, but max_element is robust regardless of ordering.)
+    const Detection best = *std::max_element(
+        allDets.begin(), allDets.end(),
+        [](const Detection &a, const Detection &b) { return a.score < b.score; });
+    const std::vector<Detection> dets = { best };
 
     const QImage mask = buildMaskImage(dets, outputs[1], input.size());
     if (mask.isNull()) {
@@ -376,5 +442,7 @@ QImage OnnxYoloSegBackend::infer(const QImage &input)
         return QImage();
     }
 
-    return compositeOverlay(input, mask);
+    QImage result = compositeOverlay(input, mask);
+    drawConfidenceChips(result, dets, input.size());  // single % chip at full opacity
+    return result;
 }

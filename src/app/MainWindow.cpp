@@ -87,6 +87,11 @@ void MainWindow::buildCentralWidget()
     layout->addWidget(splitter, /*stretch=*/1);
     layout->addWidget(m_controls);
 
+    // No media at startup -- the video controls only make sense once a video
+    // is open. A hidden widget releases its layout space, so the panes fill
+    // the whole window. Shown in openVideo(), hidden again in openImage().
+    m_controls->hide();
+
     setCentralWidget(container);
 }
 
@@ -203,9 +208,11 @@ void MainWindow::openImage()
         return;
     }
 
-    // Opening a still image stops any video playback and clears the controls.
+    // Opening a still image stops any video playback and hides the video
+    // controls -- they're meaningless without a video.
     m_controller->stop();
     m_controls->setEnabledControls(false);
+    m_controls->hide();
 
     m_lastStill = image;   // remembered so settings changes can re-preview it
     m_originalView->setImage(image);
@@ -232,6 +239,7 @@ void MainWindow::openVideo()
     }
 
     m_lastStill = QImage();   // a video is now the source, not a still
+    m_controls->show();
     m_controls->setEnabledControls(true);
     m_controller->play();
     statusBar()->showMessage(tr("Playing %1").arg(path), 5000);

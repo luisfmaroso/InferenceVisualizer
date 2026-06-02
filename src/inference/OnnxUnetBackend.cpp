@@ -1,11 +1,15 @@
 #include "inference/OnnxUnetBackend.h"
 
 #include <QDebug>
+#include <QFont>
+#include <QFontMetrics>
 #include <QPainter>
+#include <QRect>
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <vector>
 
 // ===========================================================================
 // CONFIG: adjust the Config defaults in OnnxUnetBackend.h to match how your
@@ -121,6 +125,14 @@ QImage OnnxUnetBackend::buildMaskImage(
     QImage mask(W, H, QImage::Format_ARGB32);
     mask.fill(Qt::transparent);
 
+    // Accumulators for the mean-foreground-confidence chip: sum of the winning
+    // softmax probability over painted (visible, above-floor) pixels, the count
+    // of those pixels, and a per-class painted-pixel tally so we can colour the
+    // chip with whichever visible class dominates.
+    double foregroundProbSum = 0.0;
+    qint64 foregroundCount   = 0;
+    std::vector<qint64> classPixels(static_cast<size_t>(C), 0);
+
     for (int y = 0; y < H; ++y) {
         QRgb *outLine = reinterpret_cast<QRgb *>(mask.scanLine(y));
         for (int x = 0; x < W; ++x) {
@@ -145,14 +157,66 @@ QImage OnnxUnetBackend::buildMaskImage(
                 if (cs.visible) {
                     const QColor &col = cs.color;
                     outLine[x] = qRgba(col.red(), col.green(), col.blue(), 255);
+                    foregroundProbSum += prob;
+                    ++foregroundCount;
+                    ++classPixels[static_cast<size_t>(bestC)];
                 }
             }
         }
     }
 
+    // Cache stats for the confidence chip.
+    if (foregroundCount > 0) {
+        m_lastMeanConf = static_cast<float>(foregroundProbSum / foregroundCount);
+        int dominant = -1;
+        qint64 most = 0;
+        for (int c = 0; c < C && c < static_cast<int>(classPixels.size()); ++c) {
+            if (classPixels[static_cast<size_t>(c)] > most) {
+                most = classPixels[static_cast<size_t>(c)];
+                dominant = c;
+            }
+        }
+        m_lastChipClass = dominant;
+    } else {
+        m_lastMeanConf  = 0.0f;
+        m_lastChipClass = -1;
+    }
+
     // Upscale to display size with nearest-neighbour so class regions stay
     // crisp instead of bleeding at the boundaries.
     return mask.scaled(displaySize, Qt::IgnoreAspectRatio, Qt::FastTransformation);
+}
+
+void OnnxUnetBackend::drawMeanConfidenceChip(QImage &canvas) const
+{
+    if (m_lastChipClass < 0 ||
+        m_lastChipClass >= static_cast<int>(m_cfg.classes.size())) {
+        return;  // no foreground painted -- nothing to label
+    }
+
+    const QColor &col = m_cfg.classes[static_cast<size_t>(m_lastChipClass)].color;
+    const int pct = static_cast<int>(std::lround(m_lastMeanConf * 100.0f));
+    const QString text = QStringLiteral("%1%").arg(pct);
+
+    QPainter painter(&canvas);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+
+    QFont font = painter.font();
+    font.setPointSizeF(std::max(9.0, canvas.height() / 55.0));
+    font.setBold(true);
+    painter.setFont(font);
+    const QFontMetrics fm(font);
+
+    const int padX = 4;
+    const int padY = 2;
+    const QSize textSize = fm.size(Qt::TextSingleLine, text);
+    QRect chip(0, 0, textSize.width() + 2 * padX, textSize.height() + 2 * padY);
+    chip.moveTo(0, 0);   // top-left corner of the image (no per-instance box here)
+
+    painter.fillRect(chip, QColor(col.red(), col.green(), col.blue()));
+    painter.setPen(Qt::white);
+    painter.drawText(chip, Qt::AlignCenter, text);
+    painter.end();
 }
 
 QImage OnnxUnetBackend::compositeOverlay(
@@ -201,5 +265,7 @@ QImage OnnxUnetBackend::infer(const QImage &input)
         return QImage();
     }
 
-    return compositeOverlay(input, mask);
+    QImage result = compositeOverlay(input, mask);
+    drawMeanConfidenceChip(result);   // single chip: mean confidence of foreground
+    return result;
 }

@@ -99,6 +99,11 @@ private:
                                           QSize displaySize) const;
     QImage                 compositeOverlay(const QImage &original,
                                             const QImage &mask) const;
+    // Draw a small "NN%" confidence chip (in the class colour) at each
+    // detection's top-left, at full opacity, on top of the composited overlay.
+    void                   drawConfidenceChips(QImage &canvas,
+                                               const std::vector<Detection> &dets,
+                                               QSize displaySize) const;
 
     static float           iou(const Detection &a, const Detection &b);
 

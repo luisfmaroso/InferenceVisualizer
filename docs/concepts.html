@@ -1317,10 +1317,57 @@ QImage OnnxYoloSegBackend::infer(const QImage &amp;input)
         return input;   <span class="c">// no detections -&gt; just show the original</span>
     }
 
+    <span class="c">// keep only the single highest-confidence detection</span>
+    const Detection best = *std::max_element(allDets.begin(), allDets.end(),
+        [](const Detection &amp;a, const Detection &amp;b) { return a.score &lt; b.score; });
+    const std::vector&lt;Detection&gt; dets = { best };
+
     const QImage mask = buildMaskImage(dets, outputs[1], input.size());
-    return compositeOverlay(input, mask);
+    QImage result = compositeOverlay(input, mask);
+    drawConfidenceChips(result, dets, input.size());  <span class="c">// one "NN%" chip</span>
+    return result;
 }</code></pre>
-<p><span class="ref">src/inference/OnnxYoloSegBackend.cpp:298&ndash;328</span></p>
+<p>Design choice: rather than chipping every detection (which crowds the image when the model fires many
+   overlapping instances), the YOLO path keeps only the <strong>single highest-confidence detection</strong>
+   &mdash; its mask and its one <code>NN%</code> chip. <code>buildMaskImage</code> and
+   <code>drawConfidenceChips</code> are unchanged; they just receive a one-element vector. The chip is drawn
+   <em>after</em> compositing so the text sits at full opacity (the mask alpha doesn't fade it) and at
+   display resolution (crisp, not scaled with the mask): a filled rectangle in the class colour with white
+   <code>NN%</code> text at the detection's top-left.</p>
+<pre><code><span class="c">// src/inference/OnnxYoloSegBackend.cpp &mdash; the chip, via QPainter text</span>
+QFont font = painter.font();
+font.setPointSizeF(std::max(9.0, displaySize.height() / 55.0));  <span class="c">// scale to image</span>
+font.setBold(true);
+painter.setFont(font);
+const QString text = QStringLiteral("%1%").arg(std::lround(d.score * 100.0f));
+painter.fillRect(chip, cs.color);          <span class="c">// class colour background</span>
+painter.setPen(Qt::white);
+painter.drawText(chip, Qt::AlignCenter, text);</code></pre>
+<p><span class="ref">src/inference/OnnxYoloSegBackend.cpp (drawConfidenceChips / infer)</span></p>
+
+<h3 id="unet-confidence">UNet confidence: mean of the foreground <span class="badge">Settings</span></h3>
+<p>UNet has no per-instance score &mdash; its output is a per-pixel class-probability map. To show a single
+   confidence we summarise: while building the mask, <code>OnnxUnetBackend</code> accumulates the winning
+   softmax probability over the painted (visible, above-floor) pixels and averages them. One chip, drawn at
+   the image top-left (there's no bounding box to anchor to), coloured by whichever visible class painted the
+   most pixels.</p>
+<pre><code><span class="c">// src/inference/OnnxUnetBackend.cpp &mdash; accumulate during the per-pixel pass</span>
+const float prob = 1.f / denom;          <span class="c">// softmax prob of winning class</span>
+if (prob &lt; m_probFloor) continue;
+if (cs.visible) {
+    outLine[x] = qRgba(col.red(), col.green(), col.blue(), 255);
+    foregroundProbSum += prob;           <span class="c">// running sum over foreground</span>
+    ++foregroundCount;
+    ++classPixels[bestC];                <span class="c">// for the dominant-class chip colour</span>
+}
+<span class="c">// ... after the loop:</span>
+m_lastMeanConf = foregroundProbSum / foregroundCount;   <span class="c">// the number shown</span></code></pre>
+<p>This is a deliberate choice among options: <em>mean</em> foreground confidence (how sure, on average,
+   about the region it highlighted) rather than <em>max</em> (one hot pixel, uninformative) or <em>coverage
+   %</em> (how much, not how sure). The YOLO and UNet chips look identical to the user &mdash; a coloured
+   <code>NN%</code> &mdash; but mean different things under the hood, which is the honest reflection of how
+   the two model families actually express confidence.</p>
+<p><span class="ref">src/inference/OnnxUnetBackend.cpp (buildMaskImage / drawMeanConfidenceChip)</span></p>
 
 <!-- =========================================================== -->
 <h2 id="overlays">13. Image overlays with QPainter</h2>
